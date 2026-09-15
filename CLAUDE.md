@@ -313,10 +313,14 @@ Changeable. This section is revised as the project moves.
   been deleted.
 - The employer route guard is real (`src/middleware.ts`): anonymous → `/login`, seeker
   → `/`, employer → allowed.
-- **Dockerisation (frontend container, production image, AWS EC2 deployment) is the next
-  planned phase** — not started. The current dev/test environment is the minimal
-  `docker-compose.yml` (db + backend only) from the Backend phase; the frontend still
-  runs with `npm run dev` directly on the host.
+- **Docker deployment setup is implemented** (`docs/DEPLOYMENT.md`): a separate
+  `docker-compose.prod.yml` runs Nginx + Next.js (standalone) + Django (Gunicorn) +
+  PostgreSQL, with only Nginx publicly exposed, verified locally. The dev/test
+  environment (`docker-compose.yml`, db + backend, `npm run dev` for the frontend) is
+  unchanged and still how day-to-day development works.
+- **Actual AWS EC2 provisioning has not been done.** This phase verified the production
+  Compose stack locally; standing up a real EC2 instance from it is a separate, future
+  step.
 - Any further product changes (new features, schema changes, API changes) go through
   planning and approval per §3, same as every prior phase.
 

@@ -93,8 +93,9 @@ against real PostgreSQL** as CLAUDE.md §12 requires. `.env.example` gains place
 `POSTGRES_*`, `DJANGO_SECRET_KEY`, `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`, and
 `CORS_ALLOWED_ORIGINS` entries; no real values are committed.
 
-**Out of scope here, left to the Dockerisation phase:** the frontend service, a
-production image target, gunicorn wiring, static file serving, and all EC2 configuration.
+**Out of scope here, done in the later Deployment phase instead (`docs/DEPLOYMENT.md`):**
+the frontend service, a production image target, gunicorn wiring, static file serving,
+and all EC2 configuration.
 
 ---
 
@@ -608,7 +609,8 @@ the integration phase, not here:
 ## 10. Intentionally excluded from this phase
 
 Frontend containerisation, the production image, gunicorn wiring, and AWS EC2 deployment
-(the Dockerisation phase — only a minimal dev `db` + `backend` Compose is built here) ·
+(done in the later Deployment phase instead — `docs/DEPLOYMENT.md`; only a minimal dev
+`db` + `backend` Compose is built here) ·
 frontend rewiring (§9) ·
 frontend tests **[BRIEF: not required]** · job editing · application status transitions ·
 pagination / infinite scroll · résumé or file upload · password reset, email
@@ -668,8 +670,9 @@ Nothing here is unverified.
 2. **Django session-cookie authentication** (DRF `SessionAuthentication`, CSRF enforced,
    `django-cors-headers` with credentials). No JWT, no DRF tokens.
 3. **Minimal dev Compose (`db` + `backend`)** is the run and test environment, because
-   the host cannot run Django 5.1 and has no PostgreSQL. Full containerisation stays in
-   the Dockerisation phase.
+   the host cannot run Django 5.1 and has no PostgreSQL. Full containerisation (frontend,
+   Nginx, production images) is `docs/DEPLOYMENT.md`'s separate `docker-compose.prod.yml`
+   — this dev file is unchanged by that phase.
 4. **Backend only this phase.** The frontend keeps running on mock data; rewiring
    `src/lib/data/` is a separate, later increment (§9).
 5. **The New/Reviewed application status and its badge are dropped** (§2). No

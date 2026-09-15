@@ -11,10 +11,21 @@ import { NextResponse, type NextRequest } from "next/server";
  * Approved behaviour:
  *   /employer/*     — anonymous -> /login, seeker -> /,  employer -> allowed
  *   /applications/* — anonymous -> /login, employer -> /, seeker   -> allowed
+ *
+ * This runs server-side inside the Next.js container, so it must reach the
+ * backend directly over the Docker network -- not through Nginx, and not via
+ * NEXT_PUBLIC_API_BASE_URL, which in production is a browser-relative path
+ * (`/api`, proxied by Nginx) that means nothing to a server-side fetch.
+ * INTERNAL_API_BASE_URL is the container-to-container address
+ * (docker-compose.prod.yml sets it to http://backend:8000/api); dev never
+ * sets it, so this falls back to the existing NEXT_PUBLIC_API_BASE_URL /
+ * localhost default unchanged.
  */
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api";
+  process.env.INTERNAL_API_BASE_URL ??
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  "http://localhost:8000/api";
 
 const REQUIRED_ROLE: Record<string, "employer" | "seeker"> = {
   "/employer": "employer",

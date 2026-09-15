@@ -1,0 +1,40 @@
+# Production image for the Next.js app. Build context is the repo root (the
+# frontend source lives there, not in a subdirectory -- docs/BACKEND.md §7).
+# Multi-stage so the final image ships only the standalone server output, not
+# the full node_modules tree.
+
+FROM node:20-alpine AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Inlined into the client bundle at build time (Next.js NEXT_PUBLIC_* rule).
+# A relative path, not a host:port -- Nginx proxies /api/* to the backend on
+# the same origin as the page (docs/DEPLOYMENT.md), so the same image works
+# behind any host or IP with no rebuild.
+ARG NEXT_PUBLIC_API_BASE_URL=/api
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+
+RUN npm run build
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV HOSTNAME="0.0.0.0"
+ENV PORT=3000
+
+RUN addgroup --system --gid 1001 nodejs \
+    && adduser --system --uid 1001 nextjs
+
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+USER nextjs
+EXPOSE 3000
+
+CMD ["node", "server.js"]
