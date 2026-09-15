@@ -9,7 +9,7 @@ export default function LoginPage() {
   return (
     <AuthCard
       title="Welcome back"
-      subtitle="Sign in to manage your jobs and applications."
+      subtitle="Sign in to continue to NorthwindJobs."
       footerPrompt="New here?"
       footerLinkLabel="Create an account"
       footerLinkHref="/signup"
