@@ -12,15 +12,14 @@ import { ApplicationsDrawer } from "@/components/applications/ApplicationsDrawer
 import { EmployerJobList } from "@/components/employer/EmployerJobList";
 import { EmployerStats } from "@/components/employer/EmployerStats";
 import { useAuth } from "@/components/auth/AuthProvider";
-import { countApplicationsByJob } from "@/lib/data/applications";
 import { deleteJob, listEmployerJobs, setJobStatus } from "@/lib/data/jobs";
-import type { Job } from "@/types/job";
+import type { EmployerJob, Job } from "@/types/job";
 
 export function EmployerDashboard() {
   const searchParams = useSearchParams();
   const { employerName } = useAuth();
 
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const [jobs, setJobs] = useState<EmployerJob[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -34,11 +33,15 @@ export function EmployerDashboard() {
     setLoading(true);
     setError(null);
 
-    Promise.all([listEmployerJobs(), countApplicationsByJob()])
-      .then(([jobsResult, countsResult]) => {
+    listEmployerJobs()
+      .then((jobsResult) => {
         if (!active) return;
         setJobs(jobsResult);
-        setCounts(countsResult);
+        setCounts(
+          Object.fromEntries(
+            jobsResult.map((job) => [job.id, job.applicationCount]),
+          ),
+        );
       })
       .catch(() => {
         if (active) setError("We could not load your jobs. Please try again.");
@@ -61,8 +64,10 @@ export function EmployerDashboard() {
         job.id,
         job.status === "Open" ? "Closed" : "Open",
       );
+      // setJobStatus returns a plain Job (no applicationCount); merge onto the
+      // existing EmployerJob so the count already on screen is preserved.
       setJobs((current) =>
-        current.map((item) => (item.id === updated.id ? updated : item)),
+        current.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)),
       );
     } catch {
       setError("We could not update that job. Please try again.");

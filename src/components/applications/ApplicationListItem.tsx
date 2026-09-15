@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { ChevronDown, Mail } from "lucide-react";
 
-import { Badge } from "@/components/ui/Badge";
 import { formatAbsoluteDate } from "@/lib/utils/formatDate";
 import { cn } from "@/lib/utils/cn";
 import type { Application } from "@/types/application";
@@ -31,7 +30,6 @@ export function ApplicationListItem({
             <span className="truncate text-sm font-bold text-fg">
               {application.applicantName}
             </span>
-            {application.status === "New" && <Badge variant="new">New</Badge>}
           </div>
           <p className="mt-0.5 text-xs text-fg-muted">
             Applied {formatAbsoluteDate(application.submittedAt)}

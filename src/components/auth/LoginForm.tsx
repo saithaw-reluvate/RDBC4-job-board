@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
 import { useAuth } from "@/components/auth/AuthProvider";
-import { EMPLOYER_EMAIL_HINT, signIn } from "@/lib/data/auth";
+import { signIn } from "@/lib/data/auth";
 import { useFormState } from "@/lib/forms/useFormState";
 import {
   compactErrors,
@@ -90,11 +90,6 @@ export function LoginForm() {
       <Button type="submit" size="lg" fullWidth loading={form.submitting}>
         {form.submitting ? "Signing in…" : "Sign In"}
       </Button>
-
-      <Alert variant="info">
-        Mock sign-in: any password works. Use an email containing “
-        {EMPLOYER_EMAIL_HINT}” to sign in as an employer.
-      </Alert>
     </form>
   );
 }

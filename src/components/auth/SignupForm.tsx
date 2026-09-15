@@ -28,6 +28,7 @@ interface SignupFormValues {
   password: string;
   confirmPassword: string;
   role: UserRole;
+  companyName: string;
   [key: string]: string;
 }
 
@@ -37,6 +38,7 @@ const INITIAL_VALUES: SignupFormValues = {
   password: "",
   confirmPassword: "",
   role: "seeker",
+  companyName: "",
 };
 
 export function SignupForm() {
@@ -46,7 +48,7 @@ export function SignupForm() {
   const validate = useCallback(
     (values: SignupFormValues) =>
       compactErrors<SignupFormValues>({
-        name: required(values.name, "Full name"),
+        name: required(values.name, values.role === "employer" ? "Your name" : "Full name"),
         email: validateEmail(values.email),
         password: minLength(values.password, PASSWORD_MIN, "Password"),
         confirmPassword: matches(
@@ -54,6 +56,10 @@ export function SignupForm() {
           values.password,
           "Passwords do not match.",
         ),
+        companyName:
+          values.role === "employer"
+            ? required(values.companyName, "Company name")
+            : undefined,
       }),
     [],
   );
@@ -65,6 +71,9 @@ export function SignupForm() {
         email: values.email.trim(),
         password: values.password,
         role: values.role as UserRole,
+        ...(values.role === "employer"
+          ? { companyName: values.companyName.trim() }
+          : {}),
       });
       setUser(user);
       router.push(user.role === "employer" ? "/employer" : "/");
@@ -78,6 +87,8 @@ export function SignupForm() {
     onSubmit,
   });
 
+  const isEmployer = form.values.role === "employer";
+
   return (
     <form ref={form.formRef} onSubmit={form.handleSubmit} noValidate className="space-y-5">
       <RoleToggle
@@ -85,14 +96,33 @@ export function SignupForm() {
         onChange={(role) => form.setValue("role", role)}
       />
 
-      <Field id="name" label="Full name" required error={form.errorFor("name")}>
+      {isEmployer && (
+        <Field
+          id="companyName"
+          label="Company name"
+          required
+          error={form.errorFor("companyName")}
+        >
+          <Input
+            {...form.fieldProps("companyName")}
+            type="text"
+            autoComplete="organization"
+            placeholder="Acme Inc."
+          />
+        </Field>
+      )}
+
+      <Field
+        id="name"
+        label={isEmployer ? "Your name" : "Full name"}
+        required
+        error={form.errorFor("name")}
+      >
         <Input
           {...form.fieldProps("name")}
           type="text"
           autoComplete="name"
-          placeholder={
-            form.values.role === "employer" ? "Acme Inc." : "Jane Doe"
-          }
+          placeholder="Jane Doe"
         />
       </Field>
 

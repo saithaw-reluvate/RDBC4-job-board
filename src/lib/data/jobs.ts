@@ -1,115 +1,52 @@
-import { delay } from "@/lib/mock/latency";
-import { DEMO_EMPLOYER } from "@/lib/mock/jobs.mock";
-import { mockId, mockStore } from "@/lib/mock/store";
-import type { Job, JobInput, JobQuery, JobSort, JobStatus } from "@/types/job";
+import { apiClient, ApiError } from "@/lib/data/client";
+import type { EmployerJob, Job, JobInput, JobQuery, JobStatus } from "@/types/job";
 
 /**
  * Data access for jobs. This module is the ONLY place that knows where job data
  * comes from. Components call these functions and never reach past them.
  *
- * The brief places search, filter and sort logic in the backend API. In V1 that
- * logic is implemented here against the mock store; at integration each function
- * body becomes an HTTP call carrying the same JobQuery as query parameters, and
- * no UI code changes.
+ * Search, filter, and sort are the backend's job (docs/BACKEND.md §5,
+ * `jobs/queries.py`) — this module only builds the query string.
  */
 
-/**
- * V1 definition of "relevance": a weighted text match, title first.
- * The brief mandates relevance sorting without defining it — the authoritative
- * definition is a backend planning decision (CLAUDE.md §1, "Open by design").
- */
-function relevanceScore(job: Job, term: string): number {
-  const needle = term.trim().toLowerCase();
-  if (!needle) return 0;
+function buildQueryString(query: JobQuery): string {
+  const params = new URLSearchParams();
+  if (query.search) params.set("search", query.search);
+  if (query.category) params.set("category", query.category);
+  if (query.location) params.set("location", query.location);
+  if (query.sort) params.set("sort", query.sort);
 
-  let score = 0;
-  if (job.title.toLowerCase().includes(needle)) score += 10;
-  if (job.category.toLowerCase().includes(needle)) score += 5;
-  if (job.location.toLowerCase().includes(needle)) score += 5;
-  if (job.employerName.toLowerCase().includes(needle)) score += 3;
-  if (job.description.toLowerCase().includes(needle)) score += 2;
-  if (job.requirements.join(" ").toLowerCase().includes(needle)) score += 1;
-  return score;
-}
-
-function byNewest(a: Job, b: Job): number {
-  return new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime();
-}
-
-function sortJobs(jobs: Job[], sort: JobSort, search: string): Job[] {
-  const sorted = [...jobs];
-
-  switch (sort) {
-    case "salary":
-      // Highest ceiling first; ties fall back to most recent.
-      return sorted.sort(
-        (a, b) => b.salaryMax - a.salaryMax || byNewest(a, b),
-      );
-    case "relevance":
-      // Only meaningful with a search term; otherwise behaves as newest.
-      if (!search.trim()) return sorted.sort(byNewest);
-      return sorted.sort(
-        (a, b) =>
-          relevanceScore(b, search) - relevanceScore(a, search) || byNewest(a, b),
-      );
-    case "newest":
-    default:
-      return sorted.sort(byNewest);
-  }
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
 }
 
 /** Search, filter and sort the public job list. */
 export async function listJobs(query: JobQuery = {}): Promise<Job[]> {
-  await delay();
-
-  const search = query.search?.trim() ?? "";
-  const matches = mockStore.getJobs().filter((job) => {
-    if (query.category && job.category !== query.category) return false;
-    if (query.location && job.location !== query.location) return false;
-    if (search && relevanceScore(job, search) === 0) return false;
-    return true;
-  });
-
-  return sortJobs(matches, query.sort ?? "newest", search);
+  return apiClient.get<Job[]>(`/jobs/${buildQueryString(query)}`);
 }
 
 export async function getJob(id: string): Promise<Job | null> {
-  await delay();
-  return mockStore.getJob(id) ?? null;
+  try {
+    return await apiClient.get<Job>(`/jobs/${id}/`);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
 }
 
-/** Jobs belonging to the signed-in employer. */
-export async function listEmployerJobs(): Promise<Job[]> {
-  await delay();
-  return mockStore
-    .getJobs()
-    .filter((job) => job.employerName === DEMO_EMPLOYER)
-    .sort(byNewest);
+/** Jobs belonging to the signed-in employer, with their application counts. */
+export async function listEmployerJobs(): Promise<EmployerJob[]> {
+  return apiClient.get<EmployerJob[]>("/employer/jobs/");
 }
 
 export async function createJob(input: JobInput): Promise<Job> {
-  await delay();
-
-  const job: Job = {
-    ...input,
-    id: mockId("job"),
-    postedAt: new Date().toISOString(),
-    employerName: DEMO_EMPLOYER,
-  };
-
-  mockStore.addJob(job);
-  return job;
+  return apiClient.post<Job>("/jobs/", input);
 }
 
 export async function setJobStatus(id: string, status: JobStatus): Promise<Job> {
-  await delay(120, 240);
-
-  const updated = mockStore.updateJob(id, { status });
-  if (!updated) throw new Error("That job could not be found.");
-  return updated;
+  return apiClient.patch<Job>(`/employer/jobs/${id}/`, { status });
 }
 
 export async function deleteJob(id: string): Promise<void> {
-  await delay(120, 240);
-  mockStore.removeJob(id);
+  return apiClient.delete(`/employer/jobs/${id}/`);
 }

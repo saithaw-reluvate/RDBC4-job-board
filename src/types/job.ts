@@ -10,8 +10,6 @@ export type EmploymentType =
 
 export type SalaryPeriod = "year" | "month" | "hour";
 
-export type ApplicationStatus = "New" | "Reviewed";
-
 /**
  * Frontend domain type. This is NOT a database schema — field types, naming and
  * storage are backend decisions made in a later phase.
@@ -40,6 +38,13 @@ export interface Job {
 
 /** Everything the employer supplies when posting a job. */
 export type JobInput = Omit<Job, "id" | "postedAt" | "employerName">;
+
+/** A job as it appears on the employer's own dashboard — adds applicationCount,
+ * annotated by the backend (docs/BACKEND.md §4). Never returned by the public
+ * listing. */
+export interface EmployerJob extends Job {
+  applicationCount: number;
+}
 
 export type JobSort = "newest" | "relevance" | "salary";
 

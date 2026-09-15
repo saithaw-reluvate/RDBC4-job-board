@@ -1,46 +1,75 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
-import { DEFAULT_EMPLOYER_NAME } from "@/lib/data/auth";
-import type { MockUser } from "@/types/user";
+import { ensureCsrfCookie } from "@/lib/data/client";
+import { getCurrentUser, signOut as apiSignOut } from "@/lib/data/auth";
+import type { User } from "@/types/user";
 
 /**
- * Mock auth state for demonstrating the frontend flow. In-memory only — a
- * refresh clears it (docs/FRONTEND.md §10). No tokens, no storage, and no
- * authentication mechanism is implied.
- *
- * Employer pages deliberately do NOT gate on this: /employer always renders as
- * an authenticated employer, per the approved V1 scope.
+ * Real session auth, hydrated from the backend on mount. The session itself
+ * lives in an httpOnly cookie the browser manages — this context only mirrors
+ * what `GET /api/auth/me` reports, so a refresh restores it rather than
+ * clearing it (docs/BACKEND.md §3, §9).
  */
 interface AuthContextValue {
-  user: MockUser | null;
+  user: User | null;
   signedIn: boolean;
-  setUser: (user: MockUser | null) => void;
-  signOut: () => void;
-  /** Employer identity shown on employer surfaces, signed in or not. */
+  /** True until the initial session check has completed. */
+  loading: boolean;
+  setUser: (user: User | null) => void;
+  signOut: () => Promise<void>;
+  /** Employer identity shown on employer surfaces; "" until hydrated. */
   employerName: string;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<MockUser | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const signOut = useCallback(() => setUser(null), []);
+  useEffect(() => {
+    let active = true;
+
+    // The CSRF cookie must exist before any authenticated write is attempted
+    // (docs/BACKEND.md §4); fetching it alongside session hydration means
+    // every page load establishes it, not just the login/signup screens.
+    Promise.all([ensureCsrfCookie(), getCurrentUser()])
+      .then(([, currentUser]) => {
+        if (active) setUser(currentUser);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const signOut = useCallback(async () => {
+    await apiSignOut();
+    setUser(null);
+  }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
       signedIn: user !== null,
+      loading,
       setUser,
       signOut,
-      employerName:
-        user?.role === "employer" && user.name
-          ? user.name
-          : DEFAULT_EMPLOYER_NAME,
+      employerName: user?.employer?.name ?? "",
     }),
-    [signOut, user],
+    [loading, signOut, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
