@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback } from "react";
-import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -42,7 +41,6 @@ const INITIAL_VALUES: SignupFormValues = {
 };
 
 export function SignupForm() {
-  const router = useRouter();
   const { setUser } = useAuth();
 
   const validate = useCallback(
@@ -76,9 +74,10 @@ export function SignupForm() {
           : {}),
       });
       setUser(user);
-      router.push(user.role === "employer" ? "/employer" : "/");
+      // Full navigation, not router.push — see LoginForm.tsx for why.
+      window.location.href = user.role === "employer" ? "/employer" : "/";
     },
-    [router, setUser],
+    [setUser],
   );
 
   const form = useFormState<SignupFormValues>({
