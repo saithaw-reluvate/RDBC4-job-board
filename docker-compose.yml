@@ -23,6 +23,11 @@ services:
 
   backend:
     build: ./backend
+    # Runs as the host dev user (not root) so files the container writes into
+    # the bind-mounted ./backend (migrations, .pytest_cache, .coverage) land
+    # owned by the host user instead of root. Override DEV_UID/DEV_GID in a
+    # local .env if your host user isn't 1000:1000 (`id -u`, `id -g`).
+    user: "${DEV_UID:-1000}:${DEV_GID:-1000}"
     environment:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key-not-for-production}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-True}
