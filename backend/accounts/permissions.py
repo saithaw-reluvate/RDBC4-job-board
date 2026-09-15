@@ -28,3 +28,19 @@ class IsEmployerOrReadOnly(BasePermission):
         if request.method in SAFE_METHODS:
             return True
         return IsEmployer().has_permission(request, view)
+
+
+class IsNotEmployer(BasePermission):
+    """
+    Anonymous visitors and seeker accounts pass; employer accounts do not.
+    Employers browse jobs but do not apply to them -- including their own
+    (fix/post-integration-issues #2).
+    """
+
+    message = "Employer accounts cannot submit job applications."
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return True
+        return user.role != "employer"
