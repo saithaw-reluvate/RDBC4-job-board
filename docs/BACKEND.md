@@ -163,16 +163,24 @@ constraint can't span the two tables).
 |---|---|---|
 | `id` | `UUIDField(primary_key)` | as above |
 | `job` | `ForeignKey(Job, CASCADE, related_name="applications")` | **[BRIEF]** the association |
+| `applicant` | `ForeignKey(User, SET_NULL, null=True, blank=True, related_name="applications")` | **[OPT]** — added for seeker application history (`feature/seeker-application-history`) |
 | `applicant_name` | `CharField(150)` | **[BRIEF]** |
 | `applicant_email` | `EmailField` | **[BRIEF]** |
 | `cover_letter` | `TextField` | **[BRIEF]**; 50–2000 chars (matches `ApplicationForm`) |
 | `submitted_at` | `DateTimeField(auto_now_add=True)` | |
 
-- `Meta.ordering = ["-submitted_at", "-id"]`; index on `(job, -submitted_at)`.
+- `Meta.ordering = ["-submitted_at", "-id"]`; indexes on `(job, -submitted_at)` and
+  `(applicant, -submitted_at)`.
 - `UniqueConstraint(job, applicant_email)` **[REC]** — one application per email per job.
   Surfaces through the existing `Alert` in `ApplicationForm`.
-- Applications are **anonymous** — no FK to `User`. Frontend V1 states "No account needed
-  to browse or apply", and the brief's Application model carries only name/email/letter.
+- Applications remain **optionally** linked to `User`, not required. An anonymous
+  submission still has `applicant=None` permanently — there is no backfill by email, and
+  no existing anonymous application is ever retroactively associated. `applicant` is set
+  once, server-side, from `request.user` at submission (`ApplicationSubmitView.
+  perform_create`); it is never a client-writable field, so it cannot be spoofed. Only a
+  seeker can end up with one set — an employer cannot submit an application at all
+  (`IsNotEmployer`, §3). `on_delete=SET_NULL`: deleting the user preserves the
+  application (and the employer's record of it) rather than deleting it.
 
 **No `status` field.** Verified in the code: the only consumer of V1's New/Reviewed state
 is the badge at `ApplicationListItem.tsx:34`; `APPLICATION_STATUSES` in
@@ -239,6 +247,8 @@ the framework's behaviour as-is and are consistent about it:
 | Anonymous → any protected endpoint (incl. `/api/auth/me/`) | **403** | DRF coercion described above |
 | Authenticated seeker → employer-only endpoint | **403** | `IsEmployer` |
 | Authenticated employer → submit an application | **403** | `IsNotEmployer` |
+| Authenticated employer → seeker application history | **403** | `IsSeeker` |
+| Anonymous → seeker application history | **403** | `IsSeeker` (coerced, per above) |
 | Employer → another employer's job or its applications | **404** | scoped queryset → `Http404` |
 | Missing / invalid CSRF token on a write | **403** | `SessionAuthentication.enforce_csrf` |
 | Wrong email or password on login | **400** | login serializer `ValidationError` |
@@ -326,6 +336,7 @@ general update surface is exposed.
 |---|---|---|---|
 | `POST` | `/api/jobs/{id}/applications/` | submit an application | public + seeker, `IsNotEmployer` |
 | `GET` | `/api/employer/jobs/{id}/applications/` | applications for **own** job | `IsEmployer`, scoped |
+| `GET` | `/api/seeker/applications/` | the signed-in seeker's own application history | `IsSeeker`, scoped |
 
 Submission and review are deliberately different resources on different paths: one is
 public and writes, the other is employer-scoped and reads, and each gets its own queryset.
@@ -335,6 +346,13 @@ Submission was originally `AllowAny`; `IsNotEmployer` replaced it post-integrati
 (`fix/post-integration-issues` #2) once manual testing showed an authenticated employer
 could submit an application, including to their own job. Anonymous and seeker requests are
 unaffected — the permission only turns away an authenticated employer.
+
+**Seeker application history** (`feature/seeker-application-history`) mirrors the
+employer's own-jobs pattern exactly: scoped by queryset (`applicant=request.user`), not an
+object permission, so no other seeker's applications are ever in scope, and there is
+nothing to 404 — a seeker with no applications simply gets an empty list. The response
+nests the job information the frontend needs (`id`, `title`, `employerName`, `location`,
+`status`) rather than requiring a second request per entry.
 
 **Not included** (no approved UI needs them): job full-update, applicant application
 history, employer profile read/update, category/location metadata endpoint, pagination,
