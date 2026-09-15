@@ -90,6 +90,12 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+# Populated by `collectstatic` in the production entrypoint (entrypoint.sh)
+# and served directly by Nginx from a shared volume (docs/DEPLOYMENT.md) --
+# Django/Gunicorn never serves static files itself in production. Unused in
+# dev (runserver serves app-level static files itself; nothing runs
+# collectstatic there).
+STATIC_ROOT = BASE_DIR / "staticfiles"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --- DRF ---
