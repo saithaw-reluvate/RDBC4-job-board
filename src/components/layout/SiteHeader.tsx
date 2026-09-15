@@ -13,9 +13,14 @@ import { MobileNav } from "@/components/layout/MobileNav";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { cn } from "@/lib/utils/cn";
 
-const LINKS = [
+const PUBLIC_LINKS = [
   { href: "/", label: "Find Jobs" },
   { href: "/employer", label: "For Employers" },
+];
+
+const SEEKER_LINKS = [
+  { href: "/", label: "Find Jobs" },
+  { href: "/applications", label: "My Applications" },
 ];
 
 export function SiteHeader() {
@@ -24,9 +29,10 @@ export function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const isEmployer = user?.role === "employer";
-  // Seekers get seeker-only navigation; anonymous and employer keep the
-  // existing public link set (employer-only items only hide for seekers).
-  const links = signedIn && !isEmployer ? LINKS.filter((link) => link.href !== "/employer") : LINKS;
+  const isSeeker = user?.role === "seeker";
+  // Anonymous and employer keep the existing public nav; a signed-in seeker
+  // gets seeker-only navigation instead of the employer-oriented links.
+  const links = signedIn && isSeeker ? SEEKER_LINKS : PUBLIC_LINKS;
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 8);

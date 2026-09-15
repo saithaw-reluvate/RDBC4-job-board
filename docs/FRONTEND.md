@@ -51,6 +51,7 @@ email, and cover letter.
 | `/signup` | Sign-up UI + role choice **[OPT]** | Server shell + client form |
 | `/employer` | Employer's jobs + applications drawer **[BRIEF]** | Server shell + client dashboard |
 | `/employer/jobs/new` | Post a job **[BRIEF]** | Client |
+| `/applications` | Seeker's own application history **[OPT]** | Server shell + client list (§22) |
 
 Plus root `not-found.tsx` (unknown job id) and `error.tsx` **[V1]**.
 
@@ -303,9 +304,10 @@ submit.
 Backend, API, database, and authentication mechanism · forgot password, email
 verification, social login, MFA · ~~route guards and real session handling~~ (both added
 in the integration phase, §20) · dark mode · **job editing (no Edit control at all)** ·
-applicant accounts, saved jobs, application history · resume/file upload · pagination and
-infinite scroll · email notifications · analytics · internationalisation · automated
-frontend tests **[BRIEF: not required at this stage]** · Docker and deployment.
+~~application history~~ (added, §22 — seeker-only, read-only, no status) · applicant
+accounts beyond the existing seeker/employer roles, saved jobs · resume/file upload ·
+pagination and infinite scroll · email notifications · analytics · internationalisation ·
+automated frontend tests **[BRIEF: not required at this stage]** · Docker and deployment.
 
 ---
 
@@ -695,3 +697,92 @@ construction — the destination is always fetched fresh — rather than targeti
 specific cache entry, so it holds regardless of the precise trigger. Recommend a real
 manual pass (the same sequence that found the bug: visit `/employer` anonymously, then
 sign in) before treating this fully closed.
+
+---
+
+## 22. Job Seeker Application History (implemented)
+
+**Status:** `Implemented`
+**Date:** 2026-09-15
+**Branch:** `feature/seeker-application-history`
+
+Authenticated seekers can now view their own past applications. Built on the existing
+architecture with no redesign: one new nullable relationship on the backend, one new
+scoped endpoint, one new page, and additive-only navigation changes.
+
+### What was added
+
+- **`/applications`** — "My Applications". A thin server shell (`app/applications/
+  page.tsx`, carries the `<title>`) around a client list component
+  (`components/applications/ApplicationHistoryList.tsx`), the same split already used for
+  `/employer` and the auth pages. Each entry shows the job title (linked to `/jobs/[id]`),
+  company, location, date applied, and an Open/Closed `Badge` — reusing the exact badge
+  variant the rest of the app already uses for job status, not a new visual pattern.
+  Loading (skeleton rows), empty (`EmptyState` with a "Browse jobs" link), and error
+  states follow the same conventions as every other list in the app (§12).
+- **`types/application.ts`** gains `SeekerApplication` / `SeekerApplicationJob` —
+  deliberately a different shape from `Application`, since this is the seeker's own
+  read-only history, not the employer's review record, and never echoes the applicant's
+  own name/email/cover letter back to them.
+- **`lib/data/applications.ts`** gains `listMyApplications()`, calling the new
+  `GET /api/seeker/applications/`. No change to `submitApplication` or `listApplications`.
+- **`src/middleware.ts`** generalised from a single `/employer/*` guard to a small
+  `pathname -> required role` map, adding `/applications/*` -> `seeker`. Anonymous still
+  goes to `/login` on either gated prefix; the wrong role goes to `/` on either — the
+  existing `/employer` behaviour is unchanged, just expressed as one case of the same rule
+  instead of a special case.
+- **Navigation** (`SiteHeader.tsx`, `MobileNav.tsx`): a signed-in seeker's second nav link
+  is now "My Applications" (→ `/applications`) instead of "For Employers" — purely a
+  substitution of which link shows, not a new nav pattern. Anonymous and employer
+  navigation is byte-for-byte unchanged from `fix/post-integration-issues` #3.
+
+### What was deliberately not added
+
+No application status (Pending/Reviewed/Accepted/Rejected — the brief and every prior
+phase already rejected persisting one, docs/BACKEND.md §2, §12.5), no withdrawal or
+editing, no notifications, no saved jobs, no CV upload. The history list is read-only.
+
+### Backend (TDD)
+
+`applications.Application` gains `applicant` — `ForeignKey(User, SET_NULL, null=True,
+blank=True)`. Optional by design: anonymous submissions keep `applicant=None`
+permanently, and there is **no backfill by email** for applications submitted before this
+phase — a test (`test_anonymous_applications_are_never_retroactively_included`) locks
+this in by creating an anonymous row that shares a seeker's email and asserting it never
+appears in that seeker's history. `applicant` is set exactly once, server-side, from
+`request.user` in `ApplicationSubmitView.perform_create` — the serializer has no such
+field, so there is nothing for a client to spoof; a test submits a payload carrying a
+forged `applicant`/`applicantId` and asserts the stored record is still linked to the real
+requester. A new `IsSeeker` permission (authenticated + `role == "seeker"`) gates the new
+`GET /api/seeker/applications/`, scoped by queryset (`applicant=request.user`) — the same
+ownership-via-queryset pattern as the employer's own jobs, so there is no separate object
+permission and no other seeker's applications are ever reachable. Full detail in
+`docs/BACKEND.md` §2, §3, §4.
+
+13 new tests (3 model, 10 API), all written and confirmed failing before implementation.
+One test-fixture bug was found and fixed during this phase, not shipped: `other_auth_
+client` initially shared the same `APIClient` instance as `auth_client` (both depended on
+the same cached `api_client` fixture), so two "independently authenticated" clients in one
+test silently became the same session with the last `force_authenticate` call winning.
+Existing tests never exposed this because none previously needed two authenticated
+sessions active at once. Fixed by giving `other_auth_client` its own `APIClient()`
+instance.
+
+### Verified
+
+Same method and constraint as §20/§21 (no browser available in this environment):
+`tsc --noEmit`, `next lint`, `next build` all clean (new `/applications` route present in
+the build output). Backend full suite **134/134 passing** (121 prior + 13 new), coverage
+**98%**, `makemigrations --check` and `manage.py check` both clean.
+
+Against the live `docker compose` backend and a fresh Next dev server (after the one
+documented one-time step of applying the new migration to the dev database, same pattern
+as every prior phase, docs/BACKEND.md §15.6): all four route-guard combinations confirmed
+(`/applications` anonymous → `/login`, employer → `/`, seeker → `200`; `/employer`
+unaffected for either role); full flow confirmed (employer posts a job → seeker applies →
+seeker's history shows it with the correct job info → employer closes the job → the same
+history entry immediately reflects `Closed` → the employer's own review endpoint still
+shows the application, `applicationCount` still correct, and `/api/seeker/applications/`
+still rejects the employer with `403`). Full regression pass re-confirmed live: anonymous
+apply, duplicate-application (`400`), and employer-cannot-apply (`403`,
+`{"detail": "Employer accounts cannot submit job applications."}`) all unchanged.

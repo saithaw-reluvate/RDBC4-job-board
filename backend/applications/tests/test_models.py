@@ -78,3 +78,30 @@ class TestApplicationModel:
         """
         field_names = {f.name for f in Application._meta.get_fields()}
         assert "status" not in field_names
+
+    def test_applicant_is_optional_for_anonymous_applications(self, job):
+        """The relationship must stay optional so anonymous applications keep working."""
+        application = Application.objects.create(
+            job=job, applicant_name="A", applicant_email="a@example.com",
+            cover_letter="c" * 60,
+        )
+        assert application.applicant is None
+
+    def test_applicant_links_to_the_authenticated_user(self, job, seeker):
+        application = Application.objects.create(
+            job=job, applicant=seeker, applicant_name=seeker.full_name,
+            applicant_email=seeker.email, cover_letter="c" * 60,
+        )
+        assert application.applicant == seeker
+        assert application in seeker.applications.all()
+
+    def test_deleting_the_user_sets_applicant_null_not_the_application(self, job, seeker):
+        application = Application.objects.create(
+            job=job, applicant=seeker, applicant_name=seeker.full_name,
+            applicant_email=seeker.email, cover_letter="c" * 60,
+        )
+        application_id = application.id
+        seeker.delete()
+        application.refresh_from_db()
+        assert Application.objects.filter(id=application_id).exists()
+        assert application.applicant is None

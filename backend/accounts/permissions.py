@@ -30,6 +30,16 @@ class IsEmployerOrReadOnly(BasePermission):
         return IsEmployer().has_permission(request, view)
 
 
+class IsSeeker(BasePermission):
+    """Authenticated and role == seeker."""
+
+    message = "Only job seeker accounts can perform this action."
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(user and user.is_authenticated and user.role == "seeker")
+
+
 class IsNotEmployer(BasePermission):
     """
     Anonymous visitors and seeker accounts pass; employer accounts do not.

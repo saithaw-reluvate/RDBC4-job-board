@@ -20,6 +20,14 @@ def seeker(db):
 
 
 @pytest.fixture
+def other_seeker(db):
+    return User.objects.create_user(
+        email="other.seeker@example.com", password="pw12345678", full_name="Oly Otherseeker",
+        role="seeker",
+    )
+
+
+@pytest.fixture
 def employer(db):
     user = User.objects.create_user(
         email="dana@northwind.test", password="pw12345678", full_name="Dana Okoro",
@@ -80,3 +88,13 @@ def other_employer_auth_client(api_client, other_employer):
 def auth_client(api_client, seeker):
     api_client.force_authenticate(user=seeker)
     return api_client
+
+
+@pytest.fixture
+def other_auth_client(other_seeker):
+    # A dedicated APIClient, not the shared api_client fixture: this client
+    # must stay independently authenticated as other_seeker at the same time
+    # auth_client is authenticated as seeker within the same test.
+    client = APIClient()
+    client.force_authenticate(user=other_seeker)
+    return client

@@ -1,3 +1,5 @@
+import type { JobStatus } from "@/types/job";
+
 /**
  * Fields mandated by the brief: applicant name, email, cover letter, and the
  * association with a job post.
@@ -20,3 +22,25 @@ export type ApplicationInput = Pick<
   Application,
   "jobId" | "applicantName" | "applicantEmail" | "coverLetter"
 >;
+
+/** The job summary shown on a seeker's application history entry. */
+export interface SeekerApplicationJob {
+  id: string;
+  title: string;
+  employerName: string;
+  location: string;
+  status: JobStatus;
+}
+
+/**
+ * One entry in a seeker's own application history. Deliberately not the same
+ * shape as `Application` — this is read-only history for the applicant, not
+ * the employer's review record, and never carries the applicant's own
+ * name/email/cover letter back to them (they already know it).
+ */
+export interface SeekerApplication {
+  id: string;
+  /** ISO 8601 timestamp. */
+  submittedAt: string;
+  job: SeekerApplicationJob;
+}
