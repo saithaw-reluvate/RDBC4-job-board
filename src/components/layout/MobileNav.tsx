@@ -17,9 +17,12 @@ interface MobileNavProps {
 /** Slide-in navigation panel for viewports below `md`. */
 export function MobileNav({ open, onClose }: MobileNavProps) {
   const { user, signedIn, signOut } = useAuth();
-  // Seekers get seeker-only navigation; anonymous and employer keep the
-  // existing "For Employers" link (for an employer it is their dashboard entry).
+  const isSeeker = user?.role === "seeker";
+  // Anonymous and employer keep the existing "For Employers" link (for an
+  // employer it is their dashboard entry); a signed-in seeker gets "My
+  // Applications" instead.
   const showEmployerLink = !signedIn || user?.role === "employer";
+  const showApplicationsLink = signedIn && isSeeker;
 
   useEffect(() => {
     if (!open) return;
@@ -76,6 +79,15 @@ export function MobileNav({ open, onClose }: MobileNavProps) {
               className="rounded-lg px-3 py-2.5 text-sm font-semibold text-fg hover:bg-surface-muted"
             >
               For Employers
+            </Link>
+          )}
+          {showApplicationsLink && (
+            <Link
+              href="/applications"
+              onClick={onClose}
+              className="rounded-lg px-3 py-2.5 text-sm font-semibold text-fg hover:bg-surface-muted"
+            >
+              My Applications
             </Link>
           )}
         </nav>
