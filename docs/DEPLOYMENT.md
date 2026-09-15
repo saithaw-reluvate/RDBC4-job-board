@@ -137,12 +137,21 @@ weaken the protection `ALLOWED_HOSTS` exists for.
 CORS headers at all; the variable stays available (unchanged code path) for a future
 setup that isn't single-origin, but nothing in this phase requires it to be set.
 
-**Healthchecks use `127.0.0.1`, not `localhost`.** Found during verification (§7): the
-Alpine-based frontend image resolves `localhost` to the IPv6 loopback first, which
-nothing listens on (Node binds the IPv4 `0.0.0.0` per `HOSTNAME=0.0.0.0`) — the
-healthcheck failed even though the server was running correctly. Both the frontend
-(`wget`) and backend (`python -c "urllib.request..."`) healthchecks use the explicit IPv4
-loopback for consistency, even though only the frontend one was actually broken.
+**The frontend healthcheck uses `127.0.0.1`, not `localhost`.** Found during verification
+(§7): the Alpine-based frontend image resolves `localhost` to the IPv6 loopback first,
+which nothing listens on (Node binds the IPv4 `0.0.0.0` per `HOSTNAME=0.0.0.0`) — the
+healthcheck failed even though the server was running correctly. Fixed with the explicit
+IPv4 loopback.
+
+**The backend healthcheck targets the `backend` service hostname, not an IP or
+`localhost` at all.** It originally also used `127.0.0.1`, by analogy with the frontend
+fix above — that was wrong for a different reason, found only after real EC2 deployment
+(§8): `127.0.0.1` sends `Host: 127.0.0.1:8000`, which Django's `ALLOWED_HOSTS` correctly
+rejects (`400`) since only the public host and `backend` are listed, and `127.0.0.1`
+should not be added there just to satisfy a healthcheck. Retargeting the healthcheck at
+`http://backend:8000/...` uses a hostname already accepted by `ALLOWED_HOSTS` (added for
+the frontend middleware's own internal call, above) and reachable via Docker's embedded
+DNS from the container to itself.
 
 **`nginx`'s host port is `${NGINX_PORT:-80}`, not a bare `80`.** Satisfies the stated
 requirement by default; the override exists only so local verification isn't blocked by
@@ -262,7 +271,57 @@ part of this task's instruction.
 
 ---
 
-## 8. Pending decisions
+## 8. Post-deployment fix — backend healthcheck 400 on EC2
+
+Found after real EC2 deployment, not during this phase's own local verification (§7) —
+recorded here separately rather than folded into §7's list, since it's a distinct, later
+event against a real instance.
+
+**Symptom:** Gunicorn was serving requests correctly, but the `backend` container's own
+Docker healthcheck reported `unhealthy`. `curl`/`urllib` against
+`http://127.0.0.1:8000/api/jobs/` from inside the container returned Django `HTTP 400`.
+Production `DJANGO_ALLOWED_HOSTS` held the public host and `backend`, as designed (§4) —
+`127.0.0.1` was never in it.
+
+**Root cause:** the backend healthcheck (added during this phase's own verification, §7
+item 2, by analogy with the frontend's `localhost`-resolves-to-`::1` fix) targeted
+`127.0.0.1:8000`. That request's `Host` header is `127.0.0.1:8000`, which
+`ALLOWED_HOSTS` correctly does not contain — the fix that was right for the frontend
+container was the wrong fix for the backend's healthcheck, since the two failures had
+different causes (an unreachable loopback address vs. a rejected `Host` header).
+
+**Fix:** retarget the healthcheck at `http://backend:8000/api/jobs/` instead of
+`127.0.0.1`. `backend` was already accepted by `ALLOWED_HOSTS` (added for the frontend
+middleware's own internal call — §4) and resolves via Docker's embedded DNS to the
+container's own address on the Compose network, which Gunicorn already accepts (bound to
+`0.0.0.0`). `127.0.0.1` was deliberately **not** added to `ALLOWED_HOSTS` to work around
+this, per the instruction — the fix uses a hostname the application already trusted for a
+different, existing reason, rather than widening what it trusts. One line changed in
+`docker-compose.prod.yml`; §4 above updated to match.
+
+**Verified locally**, reproducing the reported production configuration (`DJANGO_
+ALLOWED_HOSTS` set to a placeholder public host + `backend`, deliberately without
+`127.0.0.1`):
+- Confirmed the bug first: `urlopen('http://127.0.0.1:8000/...')` from inside the backend
+  container → `HTTP 400`.
+- Confirmed the fix: `urlopen('http://backend:8000/...')` → `200`; the container's own
+  healthcheck reports `healthy`.
+- Full stack (`db`, `backend`, `frontend`, `nginx`) brought up clean from nothing: all
+  four healthy, only `nginx` publishes a port.
+- Through Nginx: `/`, `/api/jobs/`, `/admin/login/`, `/login`, and static assets all
+  correct.
+- Regression pass: employer signup, the `/employer` route guard (which depends on this
+  same `ALLOWED_HOSTS` entry via middleware's internal call), posting a job, and the
+  public job listing all re-verified working; data persisted from an earlier session
+  survived, confirming this change doesn't interact with storage.
+- No errors in any service's logs.
+
+Committed directly to `main` (`4207a9d`) and pushed, per the instruction that reported
+this bug.
+
+---
+
+## 9. Pending decisions
 
 None for this phase. `NGINX_PORT`'s default (`80`) satisfies the stated requirement
 exactly; the override exists solely for local verification convenience (§4) and needs no
