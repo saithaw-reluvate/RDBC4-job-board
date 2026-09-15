@@ -4,8 +4,10 @@
 **Approved:** 2026-09-15
 **Implemented:** 2026-09-15
 **Divergences from the approved plan:** see §18.
-**Scope:** Frontend only. No backend, database, API contract, or authentication
-mechanism is decided by this document.
+**Scope:** Frontend only, on mock data, as originally approved. §20 records the later
+Frontend ↔ Backend Integration phase, which rewired `lib/data/` onto the real API and is
+what this document now describes as current — everything not mentioned in §20 is
+unchanged from V1.
 
 Tags used below:
 **[BRIEF]** = mandated by RBDC Ex 4 · **[V1]** = approved design choice ·
@@ -70,7 +72,9 @@ postedAt, employerName.
 - Categories are a fixed frontend constant **[V1]**; storage is a backend decision.
 
 **Application [BRIEF]:** id, jobId, applicantName, applicantEmail, coverLetter,
-submittedAt. **[V1]** adds a local `status` (New / Reviewed) for the dashboard only.
+submittedAt. V1 added a local `status` (New / Reviewed) for the dashboard only; the
+backend does not persist one (`docs/BACKEND.md` §2), so it was removed during
+integration (§20) rather than shipped as a value nothing could change.
 
 **Sort by "relevance" [BRIEF, undefined in the brief]:** V1 defines it as a
 weighted text match — title > category/location > description. It is offered only
@@ -81,6 +85,9 @@ The authoritative definition remains a **backend planning decision**
 ---
 
 ## 5. Architecture — the integration seam
+
+*As approved and built for V1. The seam did its job — see §20 for what integration
+actually changed inside it (small; the rule below is why).*
 
 The rule that makes later Django integration cheap:
 
@@ -241,7 +248,11 @@ Breakpoints 640 / 768 / 1024 / 1280.
 
 ---
 
-## 10. Mock data & state [V1]
+## 10. Mock data & state [V1 — superseded by §20]
+
+**No longer current.** `src/lib/mock/` was deleted and this section's mock auth was
+replaced during the Frontend ↔ Backend Integration phase (§20). Kept below as the
+historical record of what V1 actually ran on, per CLAUDE.md §6.
 
 - `lib/mock/jobs.mock.ts` — ~15 realistic jobs spanning categories, locations,
   salary ranges, and posted dates, so filter/sort/relevance are visibly exercised.
@@ -290,11 +301,11 @@ submit.
 ## 13. Intentionally excluded from V1
 
 Backend, API, database, and authentication mechanism · forgot password, email
-verification, social login, MFA · route guards and real session handling · dark mode
-· **job editing (no Edit control at all)** · applicant accounts, saved jobs,
-application history · resume/file upload · pagination and infinite scroll · email
-notifications · analytics · internationalisation · automated frontend tests
-**[BRIEF: not required at this stage]** · Docker and deployment.
+verification, social login, MFA · ~~route guards and real session handling~~ (both added
+in the integration phase, §20) · dark mode · **job editing (no Edit control at all)** ·
+applicant accounts, saved jobs, application history · resume/file upload · pagination and
+infinite scroll · email notifications · analytics · internationalisation · automated
+frontend tests **[BRIEF: not required at this stage]** · Docker and deployment.
 
 ---
 
@@ -482,3 +493,121 @@ visual pass:
 - Criterion 8 — visual confirmation of the contrast fixes in context.
 
 Run `npm run dev` and review before treating Frontend V1 as accepted.
+
+---
+
+## 20. Frontend ↔ Backend Integration (implemented)
+
+**Status:** `Implemented`
+**Date:** 2026-09-15
+**Follows:** `docs/BACKEND.md` (`Implemented`), specifically its §9 frontend integration
+contract, which this section fulfils. No redesign — the approved contract was executed
+as written, with the two incompatibilities it already flagged, plus the previously
+undecided `/employer` route-guard behaviour, resolved as below.
+
+### What changed
+
+Exactly the surface §9 predicted: `src/lib/data/` plus a handful of small edits. No page,
+component, or visual design changed.
+
+1. **`src/lib/mock/` deleted** (4 files) — confirmed nothing outside `lib/data` imported
+   it, then removed.
+2. **`src/lib/data/client.ts` added** — the one fetch wrapper: base URL from
+   `NEXT_PUBLIC_API_BASE_URL` (defaults to `http://localhost:8000/api` if unset, so no
+   `.env.local` is required for local dev), `credentials: "include"`, JSON encode/decode,
+   `X-CSRFToken` attached from the `csrftoken` cookie on every non-`GET` call, and an
+   `ApiError` class (carries the HTTP status) so callers can branch on 404/403 without
+   string-matching messages. DRF error bodies (`{"detail": "..."}` or
+   `{"field": ["msg"]}`) are flattened into one message for the existing
+   `Alert`/`submitError` slots — no form changed shape.
+3. **The three `lib/data` modules rewritten function-for-function** — same names, same
+   signatures the components already called:
+   - `jobs.ts`: `listJobs` builds the `?search=&category=&location=&sort=` query string
+     `apply_search_filter_sort` expects; `getJob` maps a `404` `ApiError` to `null`
+     (preserving the existing not-found contract); `createJob`, `setJobStatus`,
+     `deleteJob` map directly to their endpoints; `listEmployerJobs` now returns the new
+     `EmployerJob` type (`Job & { applicationCount }`) instead of a plain `Job[]`.
+   - `applications.ts`: `submitApplication` and `listApplications` call their endpoints;
+     since the API scopes by `jobId` in the URL and doesn't echo it in the response body,
+     `jobId` is attached to the returned object client-side — the adapter §5 anticipated.
+     `countApplicationsByJob()` is deleted (§9 point 4).
+   - `auth.ts`: `signIn`/`signUp` call their endpoints directly; new `getCurrentUser()`
+     maps a `403` to `null` rather than throwing, so an anonymous visit is a normal state,
+     not an error.
+4. **Component edits — exactly the three §9 named, nothing else:**
+   - `AuthProvider.tsx` — hydrates from `getCurrentUser()` on mount (alongside one
+     `ensureCsrfCookie()` call, so the CSRF cookie exists before any page's first write,
+     not only the login/signup screens); added a `loading` flag for the initial check;
+     `signOut` now calls the API and is `async`. **Session survives a refresh** — the gap
+     V1 explicitly could not close (`docs/FRONTEND.md` §10, old) is closed.
+   - `LoginForm.tsx` — removed the mock `Alert` and the `EMPLOYER_EMAIL_HINT` rule; role
+     comes from the real API response.
+   - `EmployerDashboard.tsx` — dropped `countApplicationsByJob()`; builds its existing
+     `counts` map from each job's `applicationCount` instead, so `EmployerJobList` and
+     `EmployerJobRow` needed no changes at all.
+
+### The two incompatibilities §9 flagged — both resolved as written
+
+**(a) Signup now collects a company name.** `SignupForm.tsx` gained one conditional
+`Field` — **Company name**, shown only when the Employer toggle is on, with "Full name"
+relabelled to "Your name" in that branch. `types/user.ts`'s `MockUser` became `User`
+(`{ id, name, email, role, employer: { id, name, contactEmail } | null }`); `SignUpInput`
+gained an optional `companyName`. `AuthProvider`'s `employerName` now reads
+`user.employer?.name` (falls back to `""` while loading); `DEFAULT_EMPLOYER_NAME` was
+deleted with the mock layer.
+
+**(b) Application `status` removed**, matching the backend dropping it (`docs/BACKEND.md`
+§2). The `New` badge in `ApplicationListItem.tsx` is gone; `types/application.ts` no
+longer has `status`; the now-unreferenced `ApplicationStatus` type is gone from
+`types/job.ts`; `APPLICATION_STATUSES` is gone from `constants/statuses.ts`.
+
+### The employer route guard — resolved
+
+V1 deliberately had none (§13, old). Decided for this phase and implemented as
+`src/middleware.ts`, matched on `/employer/:path*`:
+
+- **anonymous → `/login`**
+- **seeker → `/`**
+- **employer → allowed**
+
+The guard calls `GET /api/auth/me` server-side (forwarding the request's cookies) before
+any page renders, and fails closed to `/login` if the backend is unreachable. It lives in
+middleware, not inside any page component — `/employer/page.tsx` and every page under it
+are unchanged, and **no page's rendering strategy changed because of this guard**.
+
+### What did not change (told not to)
+
+**`/jobs/[id]` stays a Client Component** — not reverted to a Server Component, per this
+phase's explicit instruction. The consequence recorded in §18.1 still holds exactly as
+written: an unknown job id resolves client-side, so the response is HTTP `200` before the
+not-found UI renders (verified: `curl` against an unknown UUID returns `200`). This
+remains open for a future phase, not decided here.
+
+Everything else survived untouched, as §9 predicted: `Job`, `JobQuery`, `JobSort`, and the
+whole `lib/data` function surface, since the API is camelCase, `id` is a string (UUID),
+and the query parameters are `JobQuery`'s own field names.
+
+### Verified
+
+No browser was available in this environment (as in V1 — Firefox only, no automatable
+WebDriver), so verification is: `tsc --noEmit`, `next lint`, and `next build` all clean
+(the build compiles `src/middleware.ts`, ~26.6 kB); the Next.js dev server and the real
+`docker compose` backend (migrated once, per `docs/BACKEND.md` §15.6) both running
+together; and every mandated flow replayed with the exact requests the rewired code makes
+— same URL, same `credentials: "include"`, same CSRF cookie mechanics — checked against
+both servers' logs for errors.
+
+Confirmed working end to end: employer signup (with a company name distinct from the
+person's name) → route guard allows `/employer` and `/employer/jobs/new` → post a job →
+appears on `GET /api/jobs/` (the public list) → seeker signs up → applies with no auth
+and no CSRF token → employer reviews it via the employer-scoped endpoint → dashboard's
+`applicationCount` reflects it. Also confirmed: seeker hitting `/employer/*` redirects to
+`/`; anonymous hitting `/employer/*` redirects to `/login`; a session survives being
+reused across requests (the refresh case V1 could not do); sign-out calls the API with a
+CSRF token and actually clears the session, after which the guard blocks that
+now-anonymous session again. Neither server's logs showed an error after the one
+expected, already-documented one-time dev-database migration.
+
+Not independently re-verified in this phase: the full negative-path and search/sort
+matrix already proved directly against the API in `docs/BACKEND.md` §11/§16 — integration
+reuses that API unchanged, so it was spot-checked here rather than repeated in full.

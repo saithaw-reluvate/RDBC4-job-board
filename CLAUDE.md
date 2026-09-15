@@ -307,14 +307,18 @@ lines of clear code. Abstraction is earned by a second real use case, not antici
 
 Changeable. This section is revised as the project moves.
 
-- **We are frontend-first.** Frontend planning and implementation come before detailed
-  backend design.
-- The frontend may initially use **isolated** mock/local data — isolated so it can be
-  removed in one place.
-- Keep frontend code **modular and suitable for later Django integration**.
-- **Do not prematurely lock** authentication, database schema, or API design.
-- After Frontend V1 is implemented, it will be reviewed, and features may be added,
-  removed, or changed **before** backend planning begins.
+- **Frontend V1, Backend + Database, and Frontend ↔ Backend Integration are all
+  implemented** (`docs/FRONTEND.md`, `docs/BACKEND.md`, both status `Implemented`). The
+  frontend now runs against the real Django API — the mock layer (`src/lib/mock/`) has
+  been deleted.
+- The employer route guard is real (`src/middleware.ts`): anonymous → `/login`, seeker
+  → `/`, employer → allowed.
+- **Dockerisation (frontend container, production image, AWS EC2 deployment) is the next
+  planned phase** — not started. The current dev/test environment is the minimal
+  `docker-compose.yml` (db + backend only) from the Backend phase; the frontend still
+  runs with `npm run dev` directly on the host.
+- Any further product changes (new features, schema changes, API changes) go through
+  planning and approval per §3, same as every prior phase.
 
-Frontend architecture, component decisions, data shapes, and implementation specifics
-belong in the frontend planning doc under `docs/` — not here.
+Architecture, component decisions, data shapes, and implementation specifics belong in
+the relevant doc under `docs/` — not here.
