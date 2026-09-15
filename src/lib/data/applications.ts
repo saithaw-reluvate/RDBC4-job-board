@@ -1,5 +1,9 @@
 import { apiClient } from "@/lib/data/client";
-import type { Application, ApplicationInput } from "@/types/application";
+import type {
+  Application,
+  ApplicationInput,
+  SeekerApplication,
+} from "@/types/application";
 
 /**
  * Data access for applications. As with jobs, this module is the only place
@@ -26,4 +30,9 @@ export async function submitApplication(
     body,
   );
   return { ...created, jobId };
+}
+
+/** The signed-in seeker's own application history, newest first. */
+export async function listMyApplications(): Promise<SeekerApplication[]> {
+  return apiClient.get<SeekerApplication[]>("/seeker/applications/");
 }
