@@ -1,0 +1,45 @@
+# Dev + test environment for the Backend + Database phase (docs/BACKEND.md §1).
+# Deliberately minimal: no frontend service, no production image, no gunicorn
+# wiring. Those belong to the later Dockerisation phase.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-jobboard}
+      POSTGRES_USER: ${POSTGRES_USER:-jobboard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jobboard}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jobboard}"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    ports:
+      # Mapped off the default host port to avoid colliding with another
+      # project's Postgres container. The backend reaches this over the
+      # compose network as db:5432 regardless of the host mapping.
+      - "5433:5432"
+
+  backend:
+    build: ./backend
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key-not-for-production}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-True}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      POSTGRES_DB: ${POSTGRES_DB:-jobboard}
+      POSTGRES_USER: ${POSTGRES_USER:-jobboard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jobboard}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
