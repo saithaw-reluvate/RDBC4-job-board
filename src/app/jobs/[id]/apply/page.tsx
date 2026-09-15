@@ -12,11 +12,14 @@ import { Card } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Container } from "@/components/layout/Container";
 import { ApplicationForm } from "@/components/applications/ApplicationForm";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { getJob } from "@/lib/data/jobs";
 import { formatSalaryRange } from "@/lib/utils/formatSalary";
 import type { Job } from "@/types/job";
 
 export default function ApplyPage({ params }: { params: { id: string } }) {
+  const { user } = useAuth();
+  const isEmployerViewer = user?.role === "employer";
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
@@ -88,7 +91,18 @@ export default function ApplyPage({ params }: { params: { id: string } }) {
                 </div>
               </header>
 
-              {job.status === "Closed" ? (
+              {isEmployerViewer ? (
+                <div className="pt-6">
+                  <Alert variant="error">
+                    Employer accounts browse jobs but do not submit applications.
+                  </Alert>
+                  <Link href="/" className="mt-5 block">
+                    <Button variant="secondary" fullWidth>
+                      Browse other jobs
+                    </Button>
+                  </Link>
+                </div>
+              ) : job.status === "Closed" ? (
                 <div className="pt-6">
                   <Alert variant="error">
                     This job is no longer accepting applications.

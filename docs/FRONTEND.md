@@ -611,3 +611,87 @@ expected, already-documented one-time dev-database migration.
 Not independently re-verified in this phase: the full negative-path and search/sort
 matrix already proved directly against the API in `docs/BACKEND.md` §11/§16 — integration
 reuses that API unchanged, so it was spot-checked here rather than repeated in full.
+
+---
+
+## 21. Post-integration fixes (implemented)
+
+**Status:** `Implemented`
+**Date:** 2026-09-15
+**Branch:** `fix/post-integration-issues`
+
+Four issues found during real manual browser testing of the integrated app, fixed without
+redesigning any page or component.
+
+**1. Post-login/signup navigation.** `LoginForm.tsx` and `SignupForm.tsx` navigated with
+`router.push(...)` after a successful sign-in/sign-up. Root cause: the employer
+destination (`/employer`) is middleware-gated, and Next.js's client-side Router Cache can
+replay a redirect it cached from an **earlier anonymous visit to that same URL** (a very
+natural manual-testing sequence: try `/employer` while signed out, see it bounce to
+`/login`, then sign in from that page) instead of letting middleware re-run against the
+session that was just established. Fixed by replacing `router.push` with
+`window.location.href` in both forms — a full navigation always reaches the Next.js
+server fresh, so middleware always sees the current cookie. Not a timing fix: no delay was
+added, and the failed-auth path is unaffected since the error is thrown, and the redirect
+line is never reached, before `window.location.href` runs.
+
+**2. Employers could apply for jobs, including their own.** Fixed on the **backend**
+(`accounts/permissions.py::IsNotEmployer`, applied to `ApplicationSubmitView`) — see
+`docs/BACKEND.md` §6. The frontend also stops presenting Apply as an option to a
+signed-in employer, so there is no dead-end submission:
+- `/jobs/[id]` — the Apply Now button (both the sidebar and the mobile sticky bar) is
+  replaced by a disabled button and a one-line explanation when `user?.role ===
+  "employer"`, using the same disabled-button pattern the page already uses for a closed
+  job.
+- `/jobs/[id]/apply` — the same check replaces the form with an `Alert` and a "Browse
+  other jobs" link, mirroring the existing closed-job branch exactly, for anyone who
+  reaches the URL directly.
+
+Anonymous browsing and applying, seeker applying, duplicate-application handling, and
+closed-job handling are all unchanged — verified against the live backend after the fix
+(§20's verification method): an anonymous applicant and an authenticated seeker can still
+both apply to the same job; a second identical application still gets `400`; only the
+employer's own attempt now gets `403` with the standard `{"detail": "..."}` envelope.
+
+**3. Role-aware navbar.** `SiteHeader.tsx` and `MobileNav.tsx` filtered their nav items on
+`signedIn` alone, so a signed-in seeker still saw "For Employers" and "Dashboard".
+Both now also check `user?.role`:
+- Anonymous: unchanged — full public nav, Sign In / Sign Up.
+- Seeker: "For Employers" (desktop nav and mobile menu) and "Dashboard" (desktop) are
+  omitted; everything else (name, Sign Out) is unchanged.
+- Employer: unchanged — this is purely subtractive for the seeker case, so the employer
+  and anonymous experiences did not need to change at all.
+
+This is presentation only; the actual authorization is unchanged — `/employer/*` is still
+enforced by `src/middleware.ts` (§20) and by the backend's own permission classes,
+regardless of what the nav shows.
+
+**4. Shared login page wording.** `app/login/page.tsx`'s subtitle changed from "Sign in to
+manage your jobs and applications." (read as employer-oriented) to "Sign in to continue to
+NorthwindJobs." — neutral for both roles. The page itself stays a single shared login
+form; the account's stored role, not a login-time choice, still decides where sign-in
+lands (§20).
+
+### Verified
+
+Same method and same constraint as §20 (no browser available in this environment):
+`tsc --noEmit`, `next lint`, and `next build` all clean; backend full suite
+**121/121 passing** (4 new, covering seeker-can-apply, employer-cannot-apply to another's
+job, employer-cannot-apply to their own, and the error envelope), coverage **98%**,
+`makemigrations --check` and `manage.py check` both clean. Against the live `docker
+compose` backend and a fresh Next dev server: the exact reported reproduction (employer
+signs up, posts a job, attempts to apply to it) now returns `403`
+`"Employer accounts cannot submit job applications."`; a fresh employer session reaches
+`/employer` via a hard `GET` (what the fixed navigation now performs) without a redirect;
+a fresh seeker session is still redirected away from `/employer`; the login page serves
+the new wording; and the pre-existing regression set (anonymous apply, duplicate apply,
+job creation, application count, close/reopen) was re-checked live and unchanged.
+
+**Limitation:** issue #1's exact root cause (a stale client-side Router Cache entry from
+an earlier anonymous visit) could not be directly reproduced or falsified in this
+environment, since it requires a real browser's navigation cache and no automatable
+browser is available here (as in §19/§20). The fix eliminates the entire mechanism by
+construction — the destination is always fetched fresh — rather than targeting the
+specific cache entry, so it holds regardless of the precise trigger. Recommend a real
+manual pass (the same sequence that found the bug: visit `/employer` anonymously, then
+sign in) before treating this fully closed.

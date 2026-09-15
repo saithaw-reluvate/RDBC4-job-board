@@ -23,6 +23,10 @@ export function SiteHeader() {
   const { user, signedIn, signOut } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const isEmployer = user?.role === "employer";
+  // Seekers get seeker-only navigation; anonymous and employer keep the
+  // existing public link set (employer-only items only hide for seekers).
+  const links = signedIn && !isEmployer ? LINKS.filter((link) => link.href !== "/employer") : LINKS;
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 8);
@@ -45,7 +49,7 @@ export function SiteHeader() {
               <Logo />
 
               <nav aria-label="Main" className="hidden items-center gap-1 md:flex">
-                {LINKS.map((link) => {
+                {links.map((link) => {
                   const active =
                     link.href === "/"
                       ? pathname === "/"
@@ -76,12 +80,14 @@ export function SiteHeader() {
                   <span className="max-w-[12rem] truncate text-sm font-semibold text-fg-muted">
                     {user?.name}
                   </span>
-                  <Link href="/employer">
-                    <Button variant="secondary" size="sm">
-                      <LayoutGrid aria-hidden className="h-4 w-4" />
-                      Dashboard
-                    </Button>
-                  </Link>
+                  {isEmployer && (
+                    <Link href="/employer">
+                      <Button variant="secondary" size="sm">
+                        <LayoutGrid aria-hidden className="h-4 w-4" />
+                        Dashboard
+                      </Button>
+                    </Link>
+                  )}
                   <Button variant="ghost" size="sm" onClick={signOut}>
                     Sign Out
                   </Button>

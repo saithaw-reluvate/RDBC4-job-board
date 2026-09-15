@@ -122,6 +122,36 @@ class TestSubmitApplication:
 
 
 @pytest.mark.django_db
+class TestSubmitApplicationRoleRestriction:
+    """
+    Employer accounts browse jobs but must not apply -- to any job, including
+    their own (docs/BACKEND.md §6 update, fix/post-integration-issues #2).
+    Anonymous visitors and seeker accounts are unaffected.
+    """
+
+    def test_seeker_can_apply(self, auth_client, job):
+        response = auth_client.post(submit_url(job.id), VALID_PAYLOAD, format="json")
+        assert response.status_code == 201
+
+    def test_employer_cannot_apply_to_another_employers_job(
+        self, employer_auth_client, other_employer, job
+    ):
+        response = employer_auth_client.post(submit_url(job.id), VALID_PAYLOAD, format="json")
+        assert response.status_code == 403
+        assert Application.objects.count() == 0
+
+    def test_employer_cannot_apply_to_their_own_job(self, employer_auth_client, job):
+        response = employer_auth_client.post(submit_url(job.id), VALID_PAYLOAD, format="json")
+        assert response.status_code == 403
+        assert Application.objects.count() == 0
+
+    def test_employer_denial_uses_existing_error_envelope(self, employer_auth_client, job):
+        response = employer_auth_client.post(submit_url(job.id), VALID_PAYLOAD, format="json")
+        assert response.status_code == 403
+        assert isinstance(response.json().get("detail"), str)
+
+
+@pytest.mark.django_db
 class TestReviewApplications:
     def test_owner_employer_sees_applications_newest_first(
         self, employer_auth_client, job

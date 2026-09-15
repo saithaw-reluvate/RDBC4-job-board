@@ -238,6 +238,7 @@ the framework's behaviour as-is and are consistent about it:
 |---|---|---|
 | Anonymous → any protected endpoint (incl. `/api/auth/me/`) | **403** | DRF coercion described above |
 | Authenticated seeker → employer-only endpoint | **403** | `IsEmployer` |
+| Authenticated employer → submit an application | **403** | `IsNotEmployer` |
 | Employer → another employer's job or its applications | **404** | scoped queryset → `Http404` |
 | Missing / invalid CSRF token on a write | **403** | `SessionAuthentication.enforce_csrf` |
 | Wrong email or password on login | **400** | login serializer `ValidationError` |
@@ -323,12 +324,17 @@ general update surface is exposed.
 
 | Method | Path | Purpose | Auth |
 |---|---|---|---|
-| `POST` | `/api/jobs/{id}/applications/` | submit an application | public |
+| `POST` | `/api/jobs/{id}/applications/` | submit an application | public + seeker, `IsNotEmployer` |
 | `GET` | `/api/employer/jobs/{id}/applications/` | applications for **own** job | `IsEmployer`, scoped |
 
 Submission and review are deliberately different resources on different paths: one is
 public and writes, the other is employer-scoped and reads, and each gets its own queryset.
 There is no application `status` endpoint, because the field no longer exists (§2).
+
+Submission was originally `AllowAny`; `IsNotEmployer` replaced it post-integration
+(`fix/post-integration-issues` #2) once manual testing showed an authenticated employer
+could submit an application, including to their own job. Anonymous and seeker requests are
+unaffected — the permission only turns away an authenticated employer.
 
 **Not included** (no approved UI needs them): job full-update, applicant application
 history, employer profile read/update, category/location metadata endpoint, pagination,
@@ -419,7 +425,11 @@ Enforced in serializers (and at the DB where it is an integrity rule):
 **Application** — name required; valid email; cover letter 50–2000 chars;
 **the job must exist (`404`) and be `Open` (`400`)** — the rule `JobForm`'s status section
 already promises ("Closed jobs stay visible but cannot be applied to") and which the V1
-frontend does not currently enforce anywhere; one application per email per job (`400`).
+frontend does not currently enforce anywhere; one application per email per job (`400`);
+**employer accounts may not submit an application, to any job, including their own
+(`403`, `IsNotEmployer`)** — added post-integration (`fix/post-integration-issues` #2)
+after manual testing found an authenticated employer could apply. Anonymous visitors and
+seeker accounts are unaffected.
 
 **Auth** — email unique and normalised (case-insensitive); password ≥ 8 chars plus
 Django's validators; `role` limited to its choices; **`companyName` required when

@@ -2,9 +2,7 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import ValidationError
 from rest_framework.generics import ListAPIView, ListCreateAPIView
-from rest_framework.permissions import AllowAny
-
-from accounts.permissions import IsEmployer
+from accounts.permissions import IsEmployer, IsNotEmployer
 from applications.models import Application
 from applications.serializers import ApplicationSerializer
 from jobs.models import Job
@@ -12,8 +10,10 @@ from jobs.models import Job
 
 class ApplicationSubmitView(ListCreateAPIView):
     """
-    POST /api/jobs/{id}/applications/ — public submission. The job must exist
-    (404) and be Open (400) (docs/BACKEND.md §6).
+    POST /api/jobs/{id}/applications/ — anonymous and seeker submission. The
+    job must exist (404) and be Open (400) (docs/BACKEND.md §6). Employer
+    accounts are rejected with 403 (IsNotEmployer) -- they browse jobs but do
+    not apply, including to their own (fix/post-integration-issues #2).
 
     Only POST is exposed on this path; GET here is not part of the approved API
     (review happens on the employer-scoped path instead) so this view only
@@ -21,7 +21,7 @@ class ApplicationSubmitView(ListCreateAPIView):
     """
 
     http_method_names = ["post"]
-    permission_classes = [AllowAny]
+    permission_classes = [IsNotEmployer]
     serializer_class = ApplicationSerializer
 
     def _get_job(self):

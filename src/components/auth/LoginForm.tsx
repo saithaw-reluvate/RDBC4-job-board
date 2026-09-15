@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback } from "react";
-import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -25,7 +24,6 @@ interface LoginFormValues {
 const INITIAL_VALUES: LoginFormValues = { email: "", password: "" };
 
 export function LoginForm() {
-  const router = useRouter();
   const { setUser } = useAuth();
 
   const validate = useCallback(
@@ -44,9 +42,14 @@ export function LoginForm() {
         password: values.password,
       });
       setUser(user);
-      router.push(user.role === "employer" ? "/employer" : "/");
+      // A full navigation, not router.push: the destination for an employer
+      // is middleware-gated, and Next.js's client Router Cache can otherwise
+      // replay a redirect it cached from an earlier anonymous visit to the
+      // same URL instead of re-running middleware against the session that
+      // was just established.
+      window.location.href = user.role === "employer" ? "/employer" : "/";
     },
-    [router, setUser],
+    [setUser],
   );
 
   const form = useFormState<LoginFormValues>({

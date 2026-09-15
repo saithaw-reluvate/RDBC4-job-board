@@ -19,6 +19,7 @@ import { Card } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Alert } from "@/components/ui/Alert";
 import { Container } from "@/components/layout/Container";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { getJob } from "@/lib/data/jobs";
 import { formatAbsoluteDate, formatRelativeDate } from "@/lib/utils/formatDate";
 import { formatSalaryRange } from "@/lib/utils/formatSalary";
@@ -38,6 +39,7 @@ function DetailSkeleton() {
 }
 
 export default function JobDetailPage({ params }: { params: { id: string } }) {
+  const { user } = useAuth();
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
@@ -84,6 +86,7 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
   }
 
   const isOpen = job.status === "Open";
+  const isEmployerViewer = user?.role === "employer";
 
   const summary = [
     { Icon: Banknote, label: "Salary", value: formatSalaryRange(job) },
@@ -178,7 +181,16 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
               </dl>
 
               <div className="mt-6 border-t border-line pt-6">
-                {isOpen ? (
+                {isEmployerViewer ? (
+                  <>
+                    <Button size="lg" fullWidth disabled>
+                      Apply Now
+                    </Button>
+                    <p className="mt-3 text-center text-xs text-fg-muted">
+                      Employer accounts browse jobs but do not submit applications.
+                    </p>
+                  </>
+                ) : isOpen ? (
                   <Link href={`/jobs/${job.id}/apply`} className="block">
                     <Button size="lg" fullWidth>
                       Apply Now
@@ -201,7 +213,7 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
       </Container>
 
       {/* Mobile: keep the primary action reachable without scrolling back up. */}
-      {isOpen && (
+      {isOpen && !isEmployerViewer && (
         <div className="sticky bottom-0 z-30 border-t border-line bg-surface/95 px-5 py-3 backdrop-blur-md lg:hidden">
           <Link href={`/jobs/${job.id}/apply`} className="block">
             <Button size="lg" fullWidth>
