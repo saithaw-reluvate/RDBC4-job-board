@@ -4,8 +4,8 @@
 **Approved:** 2026-09-15
 **Implemented:** 2026-09-15
 **Phase:** Backend + Database. Follows Frontend V1 (`docs/FRONTEND.md`, `Implemented`).
-**Scope:** Backend only. The frontend keeps running on mock data until the separate
-integration phase (§9), which has not started.
+**Scope:** Backend only. The frontend integration described in §9 was carried out
+separately — see `docs/FRONTEND.md` §20 for what was actually built there.
 **Decisions confirmed 2026-09-15:** backend at `backend/` (frontend stays at the repo
 root) · Django session-cookie auth · minimal dev Compose (`db` + `backend`) as the run
 and test environment · **backend only — frontend rewiring is the next phase**.
@@ -504,8 +504,9 @@ Shared fixtures (`conftest.py`): `seeker`, `employer`, `other_employer`, `job`,
 
 ## 9. Frontend integration contract
 
-**Not executed in this phase** — this phase ends with a backend verified independently.
-The frontend rewiring is its own increment. Recorded here so the API is designed for it:
+**Executed as its own later phase**, exactly as planned here — this backend phase ended
+with the API verified independently first. The contract below is unchanged from what was
+approved; `docs/FRONTEND.md` §20 records the implementation and its own small divergences.
 
 The entire change is inside `src/lib/data/` plus three small component edits.
 
@@ -563,11 +564,16 @@ Everything else does survive untouched: `Job`, `JobQuery`, `JobSort` and the who
 `lib/data` function surface, because the API is camelCase, `id` is a string (UUID), and
 the query parameters are `JobQuery`'s own field names.
 
-Two further things become newly **possible** but stay out of scope until approved: a real
-route guard on `/employer` (V1 deliberately has none — `docs/FRONTEND.md` §13), and
-reverting `/jobs/[id]` to a Server Component for a true `404` (§18.1). Note that with real
-auth, `/employer` will start returning `403` from the API for anonymous visitors, so the
-guard question becomes live during integration even though it is not decided here.
+Two further things become newly possible once real auth exists. Both were resolved during
+the integration phase, not here:
+
+- **A route guard on `/employer`** (V1 deliberately had none — `docs/FRONTEND.md` §13).
+  Decided: anonymous → `/login`, seeker → `/`, employer → allowed. Implemented as
+  `src/middleware.ts`, not inside any page — see `docs/FRONTEND.md` §20.
+- **Reverting `/jobs/[id]` to a Server Component for a true `404`** (§18.1). Explicitly
+  **not done** this phase (told not to); the page stays a Client Component and an unknown
+  id still resolves client-side, so an unknown job returns HTTP `200` before the not-found
+  UI renders. Still open for a future phase.
 
 ---
 

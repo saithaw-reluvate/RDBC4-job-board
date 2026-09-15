@@ -1,8 +1,10 @@
-import type { ApplicationStatus } from "@/types/job";
-
 /**
  * Fields mandated by the brief: applicant name, email, cover letter, and the
- * association with a job post. `status` is a V1 dashboard-only addition.
+ * association with a job post.
+ *
+ * No `status` field: the backend does not persist one (docs/BACKEND.md §2) —
+ * nothing in the frontend ever mutated the V1 mock's New/Reviewed value, so it
+ * was dropped rather than shipped as a value nothing can change.
  */
 export interface Application {
   id: string;
@@ -12,7 +14,6 @@ export interface Application {
   coverLetter: string;
   /** ISO 8601 timestamp. */
   submittedAt: string;
-  status: ApplicationStatus;
 }
 
 export type ApplicationInput = Pick<
