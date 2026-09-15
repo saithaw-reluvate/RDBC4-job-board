@@ -1,0 +1,10 @@
+# Build context for Dockerfile.frontend (context: repo root). Keeps the
+# context small and stops the backend source, git history, and local
+# artifacts from being sent to the frontend image build.
+node_modules
+.next
+.git
+backend
+.env
+.env.*
+!.env.example
