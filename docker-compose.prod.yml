@@ -60,9 +60,13 @@ services:
     volumes:
       - static_files:/app/staticfiles
     healthcheck:
-      # 127.0.0.1, not localhost: Alpine (frontend) resolves localhost to ::1
-      # first, which nothing listens on -- kept consistent here too.
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/jobs/')"]
+      # Targets the "backend" service hostname, not 127.0.0.1/localhost:
+      # Django's ALLOWED_HOSTS validates the Host header, and only the public
+      # host and "backend" are in it (see DJANGO_ALLOWED_HOSTS above) --
+      # 127.0.0.1 is deliberately not added there just for this healthcheck.
+      # "backend" resolves via Docker's embedded DNS to this same container on
+      # the compose network, which Gunicorn already accepts (0.0.0.0 bind).
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://backend:8000/api/jobs/')"]
       interval: 5s
       timeout: 5s
       retries: 10
