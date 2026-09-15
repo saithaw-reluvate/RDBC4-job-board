@@ -1,10 +1,11 @@
 # Backend + Database — Design & Implementation Plan
 
-**Status:** `Plan approved — not yet implemented`
+**Status:** `Implemented`
 **Approved:** 2026-09-15
+**Implemented:** 2026-09-15
 **Phase:** Backend + Database. Follows Frontend V1 (`docs/FRONTEND.md`, `Implemented`).
-**Scope:** Backend only. Nothing in this document is built yet. The frontend keeps
-running on mock data until the separate integration phase (§9).
+**Scope:** Backend only. The frontend keeps running on mock data until the separate
+integration phase (§9), which has not started.
 **Decisions confirmed 2026-09-15:** backend at `backend/` (frontend stays at the repo
 root) · Django session-cookie auth · minimal dev Compose (`db` + `backend`) as the run
 and test environment · **backend only — frontend rewiring is the next phase**.
@@ -12,9 +13,10 @@ and test environment · **backend only — frontend rewiring is the next phase**
 Tags: **[BRIEF]** mandated by RBDC Ex 4 · **[REC]** approved design decision ·
 **[OPT]** optional, already present in Frontend V1 and carried forward.
 
-Per CLAUDE.md §6 this is a living document: the status above is updated as work moves,
-and on completion it is revised to describe what was actually built, including any
-divergence from this plan and why.
+Per CLAUDE.md §6 this is a living document. Sections 1-10 below describe what was
+**actually built**, verified against the real implementation, not the original plan from
+memory. Where implementation diverged from the plan, §15 records what changed and why —
+everything else matched the plan as approved. §16 is the verification record.
 
 ---
 
@@ -376,15 +378,15 @@ qs = qs.annotate(
 ).annotate(relevance=<sum of Case/When, including requirements_text__icontains>)
 ```
 
-**This is verified before it is relied on, not assumed.** Test group 5a (§8) runs first and
-asserts, against real PostgreSQL, that a job whose search term appears *only* in
-`requirements` is matched and scores exactly 1. Three things are being checked there and
-not taken on trust: that `array_to_string(varchar[], text)` accepts what `ArrayField(
-CharField)` actually stores, that a later `annotate()` may reference an earlier
-annotation inside `Case/When`, and that `__icontains` compiles correctly against an
-expression rather than a column.
+**Verified before it was relied on, not assumed.** Test group 5a (§8) ran first, before
+any other query test was written, and asserts, against real PostgreSQL, that a job whose
+search term appears *only* in `requirements` is matched and scores exactly 1. **It passed
+on the first implementation** — `array_to_string(varchar[], text)` accepts what
+`ArrayField(CharField)` actually stores, a later `annotate()` can reference an earlier
+annotation inside `Case/When`, and `__icontains` compiles correctly against an expression
+rather than a column. The fallback below was not needed.
 
-**Pre-agreed fallback if 5a does not come out clean:** drop `requirements` from the
+**Pre-agreed fallback if 5a had not come out clean:** drop `requirements` from the
 formula — it carries the lowest weight, the brief mandates searching title, category and
 location only, and every other field is a plain column. The divergence from V1's formula
 would be recorded in `docs/BACKEND.md`. No second search mechanism is introduced either
@@ -583,32 +585,45 @@ generation (the API doc is written by hand in `docs/BACKEND.md`).
 
 ---
 
-## 11. Verification and exit criteria
+## 11. Verification and exit criteria — all met
 
-1. `docker compose run --rm backend pytest` — **100% of tests passing**, against
-   PostgreSQL.
-2. `pytest --cov` — **≥ 70%**, reporting the **actual tool output**, never an estimate.
-3. Every endpoint in §4 exercised manually against a running server (curl/HTTPie script
-   kept in the repo, or the DRF browsable API) — the brief's "verify before relying on
-   it" step.
-4. Both mandated workflows proved end to end through the API: employer signup → post job
-   → job appears in public list → seeker applies → employer reads the application;
-   and search → filter → each of the three sorts returning different, correct orders.
-5. Negative paths demonstrated, not just asserted: anonymous `POST /api/jobs/` → **403**,
-   seeker → **403**, employer B touching employer A's job or its applications → **404**,
-   applying to a closed job → **400**, missing CSRF token on a write → **403**. The codes
-   documented in §3 are the ones actually observed here, and no `401` appears anywhere.
-6. The employer dashboard shows the **company** name: signup as a person with a different
-   company name, then confirm `GET /api/auth/me` returns them as distinct fields and that
-   `employerName` on that employer's jobs is the company.
-7. `python manage.py makemigrations --check` clean; `manage.py check` clean.
-8. `docs/BACKEND.md` written at implementation time (status `Implemented`), covering the
-   schema, the API, the relevance definition, the status-code table, and testing
-   guidelines **[BRIEF deliverable]**. It also records the §9 integration changes the
-   frontend will need, so that phase starts from a written list.
-9. No secret, credential, or `.env` committed; `.env.example` updated with placeholders.
+1. `docker compose run --rm backend pytest` — **117/117 tests passing**, against
+   PostgreSQL 16 in the `db` container.
+2. `pytest --cov` (source-only: `.coveragerc` excludes `tests/`, `migrations/`, and
+   `wsgi.py`/`asgi.py`) — **98% (436 statements, 8 missed)**, well above the 70% gate.
+   The actual tool output, not an estimate; see §16 for the full per-file table.
+3. Every endpoint in §4 exercised manually with `curl` against a running
+   `docker compose up` server — session cookies and CSRF tokens handled exactly as a real
+   browser client would. Full transcript in §16.
+4. Both mandated workflows proved end to end through the live API: employer signup
+   (`dana@northwind.test` / "Northwind Labs") → post job → job appears in the public
+   list → seeker (`priya@example.com`) applies → employer reads the application via
+   `GET /api/employer/jobs/{id}/applications/`. Search, both filters, and all three
+   sorts each verified to return different, correct orderings against three live jobs.
+5. Negative paths demonstrated live, not just asserted in tests: anonymous
+   `POST /api/jobs/` → **403**; seeker → **403**; employer B touching employer A's job
+   → **403 then 404** (see §15.3 — the first attempt used a CSRF token captured before
+   login, which Django rotates on login; with a fresh token the request correctly
+   returned **404**); employer B reading employer A's applications → **404** directly;
+   applying to a closed job → **400**; duplicate application (same email, same job) →
+   **400**; missing CSRF token on an authenticated write → **403**. No `401` was observed
+   anywhere, matching §3.
+6. Confirmed live: signup as **Dana Okoro** with company name **Northwind Labs** →
+   `GET /api/auth/me` returns `"name": "Dana Okoro"` and `"employer": {"name": "Northwind
+   Labs"}` as genuinely distinct fields, and `employerName` on that employer's jobs is
+   `"Northwind Labs"`, never the person's name.
+7. `python manage.py makemigrations --check --dry-run` → `No changes detected`.
+   `manage.py check` → `System check identified no issues (0 silenced)`.
+8. `docs/BACKEND.md` (this document) rewritten at implementation time to status
+   `Implemented`, describing the schema, the API, the relevance definition, the
+   status-code table, and testing guidelines as actually built **[BRIEF deliverable]**.
+   §9's integration contract is unchanged from the approved plan — both incompatibilities
+   it flagged were confirmed exactly as written during implementation.
+9. No secret, credential, or `.env` committed. `git log --all` and the final `git status`
+   were checked (§16). `.env.example` carries only placeholder values, already in place
+   before this phase's code was written.
 
-Anything unverified is reported as unverified (CLAUDE.md §11).
+Nothing here is unverified.
 
 ---
 
@@ -654,3 +669,153 @@ signup and `employer` added to the user payload (§4).
 
 New open questions found during implementation are recorded here rather than resolved
 silently (CLAUDE.md §6).
+
+---
+
+## 15. Divergences from the approved plan
+
+Recorded per CLAUDE.md §6. All are small, discovered during TDD exactly as the process is
+meant to surface them — none change the approved architecture, API surface, or scope.
+
+### 15.1 Group 0 and Group 1 were built together
+
+The plan lists "harness" (group 0) before "accounts models" (group 1) with the status-code
+pin as part of group 0. In practice `django.setup()` cannot complete at all while
+`AUTH_USER_MODEL = "accounts.User"` points at a model that does not exist yet — Django
+fails during admin autodiscovery before a single test can run. The `User` and `Employer`
+models were therefore written immediately after the harness test was confirmed red, and
+both groups' tests were run together as one red → green cycle. No test content changed;
+only the implementation ordering was interleaved out of necessity.
+
+### 15.2 Two model-layer bugs, found and fixed during group 1
+
+- `UserManager.create_user()` originally called `full_clean()` before saving. Django's
+  `full_clean()` performs its own uniqueness check and raises `ValidationError`, which
+  pre-empted the database's own unique constraint — a duplicate email raised the wrong
+  exception type at the model layer. Removed: validation belongs to the API layer
+  (serializers, §6), and the manager now relies on the DB constraint, which raises
+  `IntegrityError` as the model-level contract.
+- Django's stock `normalize_email()` only lowercases the domain part of an address, not
+  the local part — by design, since email local parts are technically case-sensitive.
+  That does not satisfy this project's requirement of case-insensitive email uniqueness
+  (§6), so `User.save()` now lowercases the email in full.
+
+Both were caught by tests written before the implementation (`test_email_uniqueness_is_
+enforced`, `test_email_is_normalised_case_insensitively`), exactly as TDD is meant to
+work — not discovered later or worked around silently.
+
+### 15.3 `CheckConstraint(check=...)` → `CheckConstraint(condition=...)`
+
+Django 5.1 deprecates the `check` keyword on `CheckConstraint` in favour of `condition`
+(a rename of the same argument, not a behaviour change). Switched during the group 3
+refactor step; confirmed with `makemigrations --check` that no migration was generated,
+since the underlying constraint is identical.
+
+### 15.4 Group 7's `applicationCount` required pulling the `Application` model forward
+
+The plan sequences "scoping" (group 7, including `/api/employer/jobs/` returning
+"correct counts") before "applications model" (group 8) — but a correct count needs the
+`Application` model to exist. The model (§2) was implemented when group 7's count test
+needed it, exactly as it was already specified for group 8, and group 8's own tests
+(written afterward) exercise the same model with no changes. As with 15.1, this is an
+ordering necessity, not a change to what was built.
+
+### 15.5 Manual verification: a stale CSRF token, not a scoping bug
+
+During the live negative-path check (§11.5), the first attempt to `PATCH` employer A's
+job as employer B returned **403** instead of the expected **404**. Investigation showed
+the CSRF token had been captured *before* that employer's signup — Django rotates the
+CSRF token on `login()` as a deliberate anti-fixation measure, so the pre-login token was
+stale and failed CSRF validation before the request ever reached the view's queryset
+scoping. Re-fetching a fresh token and retrying produced the correct **404**. Recorded
+here because it is a real thing a real API client must handle (fetch CSRF once per
+session, after establishing it, not before) — not a defect in the scoping logic, which
+behaved exactly as designed once CSRF was satisfied.
+
+### 15.6 CSRF endpoint and dev-database migration were not pre-specified, and are now covered
+
+- `GET /api/auth/csrf/` is listed in the plan's §4 endpoint table but had no test in any
+  numbered TDD group. Added a test for it during the coverage pass (§11.2) once coverage
+  data showed the view's body was never executed by the suite.
+- The dev `db` container starts with no schema; `python manage.py migrate` must be run
+  against it once (pytest's own test database is separate and migrates itself
+  automatically). This is standard Django/pytest-django behaviour, not a defect, but it
+  was not written down anywhere — it now is, here and in the setup note below.
+
+**Dev setup, for the record:** `docker compose up -d db && docker compose run --rm
+backend python manage.py migrate` once, before `docker compose up backend` is expected to
+serve real data.
+
+---
+
+## 16. Verification record
+
+Run on 2026-09-15 against the implemented code, in the approved Compose environment.
+
+### Automated
+
+| Check | Result |
+|---|---|
+| `pytest` (full suite) | **117 passed, 0 failed** |
+| `pytest --cov` (source only — see `.coveragerc`) | **98% (436 stmts, 8 missed)** |
+| `makemigrations --check --dry-run` | `No changes detected` |
+| `manage.py check` | `System check identified no issues (0 silenced)` |
+| Docker image build | clean, `Django-5.1.15` installed |
+| `git status` after final commit | clean; no `.env`, secret, or build artifact tracked |
+
+Coverage by app: `accounts` 89–100% per file (uncovered lines are `create_superuser`,
+never exercised by API tests since nothing calls it, and `__str__` methods used only for
+admin/shell display) · `jobs` 98–100% · `applications` 94–100% · `config/settings.py`
+100%. No file is below the 70% gate; most are at 100%.
+
+Test breakdown (116 written across the numbered TDD groups, +1 added for the CSRF gap in
+§15.6 = 117): accounts models 13, auth API 19, jobs models 9, jobs queries 14
+(including the 5a relevance spike), jobs read API 12, jobs write API 10, jobs scoping 15,
+applications models 7, applications API 18.
+
+### Manual, against a live server (`docker compose up`)
+
+All executed with `curl`, handling session cookies and CSRF tokens as a real client must.
+
+1. **CSRF** — `GET /api/auth/csrf/` → 200, sets `csrftoken`.
+2. **Employer signup** — `dana@northwind.test`, full name "Dana Okoro", company name
+   "Northwind Labs" → 201, `name` ≠ `employer.name` in the same response.
+3. **`GET /api/auth/me`** — 200, confirms the same distinct fields persist across a
+   request, not just in the signup response.
+4. **Post a job** — 201, `employerName: "Northwind Labs"`, `status: "Open"` by default
+   even though the client never sent `status`.
+5. **Public list** — the new job appears, `GET /api/jobs/` → 200.
+6. **Seeker signup + apply** — `priya@example.com` signs up (201), applies to the job
+   with no auth and no CSRF token (201, confirming submission is genuinely public).
+7. **Employer reads the application** — `GET /api/employer/jobs/{id}/applications/` → 200,
+   the submitted application present with full cover letter.
+8. **Employer dashboard count** — `GET /api/employer/jobs/` → `applicationCount: 1`.
+9. **Search** — `?search=backend` returns only the two jobs with "backend" in the title,
+   out of three live jobs.
+10. **Filter** — `?category=Design` and `?location=Berlin, Germany` each isolate exactly
+    the one matching job.
+11. **Sort — newest** (default) — three jobs returned most-recently-posted first.
+12. **Sort — salary** — same three jobs returned strictly by descending `salaryMax`
+    (260000 → 160000 → 85000), a different order than newest.
+13. **Sort — relevance** — `?search=engineer&sort=relevance` ranks both "Engineer" jobs
+    above the "Design" job, a third distinct ordering.
+14. **Negative: anonymous create** — `POST /api/jobs/` with no auth → 403.
+15. **Negative: seeker create** — same request authenticated as a seeker → 403.
+16. **Negative: cross-employer PATCH** — employer B against employer A's job → 403 on the
+    first attempt (stale pre-login CSRF token, §15.5), **404** once the token was fresh.
+17. **Negative: cross-employer applications read** — employer B against employer A's
+    job's applications → 404 directly.
+18. **Negative: apply to a closed job** — employer closes the job (200), then an anonymous
+    application to it → 400.
+19. **Negative: duplicate application** — same email, same job, submitted twice → 400 on
+    the second attempt.
+20. **Negative: missing CSRF on an authenticated write** — `PATCH` with a valid session
+    but no `X-CSRFToken` header → 403.
+21. **No `401` observed** anywhere across all of the above, matching §3.
+22. **Browsable API** — `GET /api/jobs/` with `Accept: text/html` → 200 (renders DRF's
+    browsable API, covering the brief's Postman-equivalent expectation).
+23. **Admin** — `GET /admin/login/` → 200.
+
+Every item above was executed against a running container, not inferred from the test
+suite. Full request/response bodies are in the session transcript; the table above
+summarises outcomes.
