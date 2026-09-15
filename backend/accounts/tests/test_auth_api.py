@@ -5,10 +5,19 @@ import pytest
 
 from accounts.models import Employer, User
 
+CSRF_URL = "/api/auth/csrf/"
 SIGNUP_URL = "/api/auth/signup/"
 LOGIN_URL = "/api/auth/login/"
 LOGOUT_URL = "/api/auth/logout/"
 ME_URL = "/api/auth/me/"
+
+
+@pytest.mark.django_db
+class TestCsrf:
+    def test_csrf_endpoint_is_public_and_sets_the_cookie(self, api_client):
+        response = api_client.get(CSRF_URL)
+        assert response.status_code == 200
+        assert "csrftoken" in response.cookies
 
 
 @pytest.mark.django_db
