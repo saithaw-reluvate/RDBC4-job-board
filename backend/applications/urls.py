@@ -1,6 +1,10 @@
 from django.urls import path
 
-from applications.views import ApplicationSubmitView, EmployerApplicationListView
+from applications.views import (
+    ApplicationSubmitView,
+    EmployerApplicationListView,
+    SeekerApplicationListView,
+)
 
 urlpatterns = [
     path(
@@ -12,5 +16,10 @@ urlpatterns = [
         "employer/jobs/<str:job_id>/applications/",
         EmployerApplicationListView.as_view(),
         name="employer-application-list",
+    ),
+    path(
+        "seeker/applications/",
+        SeekerApplicationListView.as_view(),
+        name="seeker-application-list",
     ),
 ]

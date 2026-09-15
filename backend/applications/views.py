@@ -2,9 +2,9 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import ValidationError
 from rest_framework.generics import ListAPIView, ListCreateAPIView
-from accounts.permissions import IsEmployer, IsNotEmployer
+from accounts.permissions import IsEmployer, IsNotEmployer, IsSeeker
 from applications.models import Application
-from applications.serializers import ApplicationSerializer
+from applications.serializers import ApplicationSerializer, SeekerApplicationSerializer
 from jobs.models import Job
 
 
@@ -41,7 +41,11 @@ class ApplicationSubmitView(ListCreateAPIView):
             raise ValidationError(
                 {"detail": "This job is no longer accepting applications."}
             )
-        serializer.save(job=job)
+        # applicant always comes from the authenticated request, never from
+        # client input -- the serializer has no such field to spoof in the
+        # first place (feature/seeker-application-history).
+        applicant = self.request.user if self.request.user.is_authenticated else None
+        serializer.save(job=job, applicant=applicant)
 
 
 class EmployerApplicationListView(ListAPIView):
@@ -58,3 +62,21 @@ class EmployerApplicationListView(ListAPIView):
             Job, id=self.kwargs["job_id"], employer=self.request.user.employer
         )
         return Application.objects.filter(job=job)
+
+
+class SeekerApplicationListView(ListAPIView):
+    """
+    GET /api/seeker/applications/ — the signed-in seeker's own application
+    history, newest first (feature/seeker-application-history). Scoped by
+    `applicant`, the same ownership-via-queryset pattern as the employer's own
+    jobs/applications (docs/BACKEND.md §3) -- there is no separate object
+    permission, and no other seeker's applications are ever in scope.
+    """
+
+    serializer_class = SeekerApplicationSerializer
+    permission_classes = [IsSeeker]
+
+    def get_queryset(self):
+        return Application.objects.filter(
+            applicant=self.request.user
+        ).select_related("job", "job__employer")
