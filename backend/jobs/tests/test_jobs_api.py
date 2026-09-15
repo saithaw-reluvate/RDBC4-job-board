@@ -142,3 +142,85 @@ class TestJobDetail:
     def test_malformed_id_returns_404(self, api_client):
         response = api_client.get("/api/jobs/not-a-uuid/")
         assert response.status_code == 404
+
+
+@pytest.mark.django_db
+class TestJobCreate:
+    VALID_PAYLOAD = {
+        "title": "Backend Engineer",
+        "description": "Own our services end to end with a focus on reliability.",
+        "requirements": ["Python", "Django", "PostgreSQL"],
+        "location": "Remote",
+        "category": "Engineering",
+        "employmentType": "Full-time",
+        "salaryMin": 90000,
+        "salaryMax": 125000,
+    }
+
+    def test_employer_can_create_a_job(self, employer_auth_client, employer):
+        response = employer_auth_client.post(JOBS_URL, self.VALID_PAYLOAD, format="json")
+        assert response.status_code == 201
+        body = response.json()
+        assert body["title"] == "Backend Engineer"
+        assert body["status"] == "Open"
+        assert body["employerName"] == employer.name
+
+        job = Job.objects.get(id=body["id"])
+        assert job.employer == employer
+
+    def test_seeker_cannot_create_a_job(self, auth_client):
+        response = auth_client.post(JOBS_URL, self.VALID_PAYLOAD, format="json")
+        assert response.status_code == 403
+        assert Job.objects.count() == 0
+
+    def test_anonymous_cannot_create_a_job(self, api_client):
+        response = api_client.post(JOBS_URL, self.VALID_PAYLOAD, format="json")
+        assert response.status_code == 403
+        assert Job.objects.count() == 0
+
+    def test_missing_title_returns_400(self, employer_auth_client):
+        payload = {**self.VALID_PAYLOAD, "title": ""}
+        response = employer_auth_client.post(JOBS_URL, payload, format="json")
+        assert response.status_code == 400
+        assert "title" in response.json()
+
+    def test_description_under_40_chars_returns_400(self, employer_auth_client):
+        payload = {**self.VALID_PAYLOAD, "description": "too short"}
+        response = employer_auth_client.post(JOBS_URL, payload, format="json")
+        assert response.status_code == 400
+        assert "description" in response.json()
+
+    def test_empty_requirements_returns_400(self, employer_auth_client):
+        payload = {**self.VALID_PAYLOAD, "requirements": []}
+        response = employer_auth_client.post(JOBS_URL, payload, format="json")
+        assert response.status_code == 400
+        assert "requirements" in response.json()
+
+    def test_salary_max_below_min_returns_400(self, employer_auth_client):
+        payload = {**self.VALID_PAYLOAD, "salaryMin": 100000, "salaryMax": 50000}
+        response = employer_auth_client.post(JOBS_URL, payload, format="json")
+        assert response.status_code == 400
+
+    def test_invalid_category_returns_400(self, employer_auth_client):
+        payload = {**self.VALID_PAYLOAD, "category": "Not A Real Category"}
+        response = employer_auth_client.post(JOBS_URL, payload, format="json")
+        assert response.status_code == 400
+        assert "category" in response.json()
+
+    def test_client_supplied_employer_is_ignored(
+        self, employer_auth_client, employer, other_employer
+    ):
+        payload = {**self.VALID_PAYLOAD, "employer": str(other_employer.id)}
+        response = employer_auth_client.post(JOBS_URL, payload, format="json")
+        assert response.status_code == 201
+        job = Job.objects.get(id=response.json()["id"])
+        assert job.employer == employer
+        assert job.employer != other_employer
+
+    def test_status_defaults_to_open_and_is_not_client_settable(
+        self, employer_auth_client
+    ):
+        payload = {**self.VALID_PAYLOAD, "status": "Closed"}
+        response = employer_auth_client.post(JOBS_URL, payload, format="json")
+        assert response.status_code == 201
+        assert response.json()["status"] == "Open"
