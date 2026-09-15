@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Colour tokens. Values are space-separated RGB channels so Tailwind can apply
+ * opacity modifiers via `rgb(var(--token) / <alpha-value>)`.
+ *
+ * BRAND tokens are fixed across themes.
+ * SEMANTIC tokens are the theme surface: adding a dark theme later means
+ * redefining only this second group under a `[data-theme="dark"]` block (and/or
+ * a `prefers-color-scheme` block). No component should need to change.
+ *
+ * Frontend V1 ships light only — see docs/FRONTEND.md §7.
+ */
+:root {
+  /* --- brand --- */
+  --brand-navy-900: 10 22 51;
+  --brand-navy-700: 22 37 90;
+  --brand-blue-600: 29 78 216;
+  --brand-blue-700: 30 64 175;
+  --brand-blue-50: 239 244 255;
+
+  /* --- semantic --- */
+  --bg: 255 255 255;
+  --surface: 255 255 255;
+  --surface-muted: 248 250 252;
+
+  --line: 226 232 240;
+  --line-strong: 203 213 225;
+  /*
+   * Form-control boundaries must meet WCAG 1.4.11 non-text contrast (3:1), which
+   * the decorative --line tokens deliberately do not. Verified at 3.15:1 on the
+   * page ground and 3.01:1 on the muted surface.
+   */
+  --line-control: 133 146 166;
+
+  --fg: 11 15 25;
+  /* Both text tones meet WCAG AA (4.5:1) on the page and on the muted surface. */
+  --fg-muted: 71 85 105;
+  --fg-subtle: 100 116 139;
+  --fg-on-dark: 255 255 255;
+  --fg-on-dark-muted: 191 205 235;
+
+  --primary: 29 78 216;
+  --primary-hover: 30 64 175;
+  --primary-fg: 255 255 255;
+  --primary-soft: 239 244 255;
+
+  --success: 21 94 61;
+  --success-soft: 236 253 243;
+
+  --danger: 159 18 57;
+  --danger-soft: 255 241 244;
+
+  color-scheme: light;
+}
+
+@layer base {
+  * {
+    @apply border-line;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-bg text-fg antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply text-balance;
+    letter-spacing: -0.022em;
+  }
+
+  /* One consistent focus treatment everywhere. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-bg;
+  }
+
+  ::selection {
+    @apply bg-primary-soft text-navy-900;
+  }
+}
+
+@layer components {
+  .surface-dark {
+    background-image: linear-gradient(
+      135deg,
+      rgb(var(--brand-navy-900)) 0%,
+      rgb(var(--brand-navy-700)) 58%,
+      rgb(var(--brand-blue-700)) 100%
+    );
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
